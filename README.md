@@ -4,7 +4,15 @@ In this repository, you will find multiple files with examples for the most popu
 
 ## HOW TO USE THIS REPOSITORY
 
-These recipes are designed so you can just copy and paste them into your environment, but you can also run them directly within this repository.
+These recipes are designed so you can just copy and paste them into your environment.
+
+### CURRENT MODELS
+
+* [Z-Image](https://github.com/asomoza/diffusers-recipes/blob/main/models/z-image/README.md)
+
+### USING THIS REPOSITORY
+
+If you want, you can also run the scripts directly from this repository.
 
 First, clone the project:
 
@@ -44,7 +52,7 @@ For scripts that use quantization, you will need to install the quantization ext
 uv sync --extra quantization
 ```
 
-For scripts that use a different attention backend, you need to install the attentions extras:
+For scripts that use a different attention backend, you need to install the attention extras:
 
 ```bash
 uv sync --extra attentions
@@ -52,7 +60,7 @@ uv sync --extra attentions
 
 ## BENCHMARKS
 
-The benchmarks were done on the following systems:
+The benchmarks were run on the following systems:
 
 ```
 Test Bench #1
