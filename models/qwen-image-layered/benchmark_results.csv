@@ -1,0 +1,3 @@
+script,peak_ram_gb,peak_vram_gb,duration_s,denoise_s
+./models/qwen-image-layered/scripts/base_example.py,oom,1oom,oom,oom
+./models/qwen-image-layered/scripts/bnb-4bit-both_cpu_offload.py,23.535423278808594,18.68359375,158.18149662017822,140.0
