@@ -28,4 +28,4 @@ Here is a table with the benchmarks for this model. You can also download a [csv
 | [gguf_Q4_K_M_4bit_TE.py](https://github.com/asomoza/diffusers-recipes/blob/main/models/z-image/scripts/gguf_Q4_K_M_4bit_TE.py) | 9.98 | 12.71 | 11.18 | 4.00 |
 | [gguf_Q4_K_M_4bit_TE_cpu_offload.py](https://github.com/asomoza/diffusers-recipes/blob/main/models/z-image/scripts/gguf_Q4_K_M_4bit_TE_cpu_offload.py) | 9.62 | 6.42 | 12.06 | 5.00 |
 | [gguf_Q4_K_M_4bit_TE_leaf_stream_group_offload_record.py](https://github.com/asomoza/diffusers-recipes/blob/main/models/z-image/scripts/gguf_Q4_K_M_4bit_TE_leaf_stream_group_offload_record.py) | 12.41 | 7.26 | 12.92 | 4.00 |
-| [lora.py](https://github.com/asomoza/diffusers-recipes/blob/main/models/z-image/scripts/lora/py) | 10.20 | 25.05 | 16.96 | 4.00 |
+| [lora.py](https://github.com/asomoza/diffusers-recipes/blob/main/models/z-image/scripts/lora.py) | 10.20 | 25.05 | 16.96 | 4.00 |
