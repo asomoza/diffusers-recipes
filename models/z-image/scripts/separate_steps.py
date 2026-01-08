@@ -1,4 +1,5 @@
 import gc
+import os
 
 import torch
 from diffusers import AutoencoderKL, ZImagePipeline
@@ -73,4 +74,7 @@ with torch.inference_mode():
 image_processor = VaeImageProcessor(vae_scale_factor=16)
 image = image_processor.postprocess(image, output_type="pil")
 
-image[0].save("zimage_output.png")
+if not os.path.exists("./outputs/zimage"):
+    os.makedirs("./outputs/zimage")
+
+image[0].save("./outputs/zimage/separate_steps.png")

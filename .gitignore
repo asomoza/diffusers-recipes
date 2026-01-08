@@ -208,3 +208,6 @@ __marimo__/
 
 offload_temp/
 .vscode/
+
+temp_models/
+outputs/

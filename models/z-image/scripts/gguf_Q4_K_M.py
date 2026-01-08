@@ -1,3 +1,5 @@
+import os
+
 import torch
 from diffusers import GGUFQuantizationConfig, ZImagePipeline, ZImageTransformer2DModel
 
@@ -25,4 +27,7 @@ image = pipe(
     generator=torch.Generator("cuda").manual_seed(42),
 ).images[0]
 
-image.save("zimage_output.png")
+if not os.path.exists("./outputs/zimage"):
+    os.makedirs("./outputs/zimage")
+
+image.save("./outputs/zimage/gguf_Q4_K_M.png")

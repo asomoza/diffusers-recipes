@@ -1,3 +1,5 @@
+import os
+
 import torch
 from diffusers import ZImagePipeline
 
@@ -19,4 +21,7 @@ image = pipe(
     generator=torch.Generator("cuda").manual_seed(42),
 ).images[0]
 
-image.save("zimage_output.png")
+if not os.path.exists("./outputs/zimage"):
+    os.makedirs("./outputs/zimage")
+
+image.save("./outputs/zimage/layerwise.png")
