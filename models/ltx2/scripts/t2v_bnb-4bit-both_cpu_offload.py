@@ -10,19 +10,19 @@ torch_dtype = torch.bfloat16
 
 text_encoder = Gemma3ForConditionalGeneration.from_pretrained(
     "OzzyGT/LTX-2-bnb-4bit-text-encoder",
-    torch_dtype=torch.bfloat16,
+    dtype=torch_dtype,
     device_map="cpu",
 )
 
 transformer = LTX2VideoTransformer3DModel.from_pretrained(
     "OzzyGT/LTX-2-bnb-4bit-transformer",
-    torch_dtype=torch.bfloat16,
+    torch_dtype=torch_dtype,
     device_map="cpu",
 )
 
 
 pipe = LTX2Pipeline.from_pretrained(
-    "Lightricks/LTX-2", transformer=transformer, text_encoder=text_encoder, torch_dtype=torch.bfloat16
+    "Lightricks/LTX-2", transformer=transformer, text_encoder=text_encoder, torch_dtype=torch_dtype
 )
 pipe.vae.enable_tiling()
 pipe.enable_model_cpu_offload()

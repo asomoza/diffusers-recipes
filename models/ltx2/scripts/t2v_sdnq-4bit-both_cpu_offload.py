@@ -14,7 +14,7 @@ torch_dtype = torch.bfloat16
 text_encoder = Gemma3ForConditionalGeneration.from_pretrained(
     "Disty0/LTX-2-SDNQ-4bit-dynamic",
     subfolder="text_encoder",
-    torch_dtype=torch.bfloat16,
+    dtype=torch_dtype,
     device_map="cpu",
 )
 
@@ -22,12 +22,12 @@ text_encoder = Gemma3ForConditionalGeneration.from_pretrained(
 transformer = LTX2VideoTransformer3DModel.from_pretrained(
     "Disty0/LTX-2-SDNQ-4bit-dynamic",
     subfolder="transformer",
-    torch_dtype=torch.bfloat16,
+    torch_dtype=torch_dtype,
     device_map="cpu",
 )
 
 pipe = LTX2Pipeline.from_pretrained(
-    "Lightricks/LTX-2", transformer=transformer, text_encoder=text_encoder, torch_dtype=torch.bfloat16
+    "Lightricks/LTX-2", transformer=transformer, text_encoder=text_encoder, torch_dtype=torch_dtype
 )
 
 if triton_is_available and (torch.cuda.is_available() or torch.xpu.is_available()):

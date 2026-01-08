@@ -1,3 +1,5 @@
+import os
+
 import torch
 from diffusers import QwenImageEditPlusPipeline
 from diffusers.utils import load_image
@@ -13,19 +15,19 @@ image1 = load_image(
 image2 = load_image(
     "https://huggingface.co/datasets/OzzyGT/diffusers-examples/resolve/main/qwen-image-edit-plus/20251223141332.png"
 )
-image3 = load_image(
-    "https://huggingface.co/datasets/OzzyGT/diffusers-examples/resolve/main/qwen-image-edit-plus/20251223141636.png"
-)
 
-prompt = "put the turtle, the rabbit and the capybara together in a game show setting."
+prompt = "the turtle from image 1 and the rabbit from image 2 are fighting in an epic battle scene at a beach in a tropical island, 35mm, depth of field, 50mm lens, f/3.5, cinematic lighting"
 
-output = pipe(
-    image=[image1, image2, image3],
+image = pipe(
+    image=[image1, image2],
     prompt=prompt,
     negative_prompt=" ",
     num_inference_steps=40,
-    guidance_scale=1.0,
+    true_cfg_scale=4.0,
     generator=torch.Generator("cuda").manual_seed(42),
-)
-output_image = output.images[0]
-output_image.save("output_image_edit_2511.png")
+).images[0]
+
+if not os.path.exists("./outputs/qwen-image-edit-plus"):
+    os.makedirs("./outputs/qwen-image-edit-plus")
+
+image.save("./outputs/qwen-image-edit-plus/layerwise.png")

@@ -5,8 +5,10 @@ from diffusers import LTX2Pipeline
 from diffusers.pipelines.ltx2.export_utils import encode_video
 
 
-pipe = LTX2Pipeline.from_pretrained("Lightricks/LTX-2", torch_dtype=torch.bfloat16)
-pipe.transformer.enable_layerwise_casting(storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.bfloat16)
+torch_dtype = torch.bfloat16
+
+pipe = LTX2Pipeline.from_pretrained("Lightricks/LTX-2", torch_dtype=torch_dtype)
+pipe.transformer.enable_layerwise_casting(storage_dtype=torch.float8_e4m3fn, compute_dtype=torch_dtype)
 pipe.vae.enable_tiling()
 pipe.enable_model_cpu_offload()
 
