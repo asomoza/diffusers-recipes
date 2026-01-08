@@ -5,9 +5,9 @@ description = "Recipes for using diffusers with different optimizations."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "accelerate>=1.12.0",
+    "accelerate>=1.12.0",    
     "diffusers>=0.36.0.dev0",
-    "peft>=0.18.0",    
+    "peft>=0.18.0",
     "torch>=2.9.1",
     "torchvision>=0.24.1",
     "transformers>=4.57.3",
@@ -25,6 +25,9 @@ quantization = [
 ]
 attentions = [
     "kernels>=0.11.3",
+]
+video = [
+  "av>=16.0.1",
 ]
 
 [tool.ruff]
