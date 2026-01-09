@@ -1,10 +1,21 @@
-import torch
-from diffusers import QwenImagePipeline
+import os
 
+import torch
+from diffusers import QwenImagePipeline, QwenImageTransformer2DModel
+from transformers import Qwen2_5_VLForConditionalGeneration
+
+
+torch_dtype = torch.bfloat16
+
+transformer = QwenImageTransformer2DModel.from_pretrained(
+    "OzzyGT/Qwen-Image-2512-bnb-4bit-transformer", torch_dtype=torch_dtype, device_map="cpu"
+)
+text_encoder = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+    "OzzyGT/Qwen-Image-2512-bnb-4bit-text-encoder", torch_dtype=torch_dtype, device_map="cpu"
+)
 
 pipe = QwenImagePipeline.from_pretrained(
-    "Qwen/Qwen-Image-2512",
-    torch_dtype=torch.bfloat16,
+    "Qwen/Qwen-Image-2512", transformer=transformer, text_encoder=text_encoder, torch_dtype=torch_dtype
 )
 pipe.enable_model_cpu_offload()
 
@@ -21,4 +32,7 @@ image = pipe(
     generator=torch.Generator(device="cuda").manual_seed(42),
 ).images[0]
 
-image.save("qwen-image_output.png")
+if not os.path.exists("./outputs/qwen-image"):
+    os.makedirs("./outputs/qwen-image")
+
+image.save("./outputs/qwen-image/bnb-4bit-both_cpu_offload.png")
