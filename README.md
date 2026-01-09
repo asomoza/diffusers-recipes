@@ -43,7 +43,7 @@ uv run <script>
 For example:
 
 ```bash
-uv run models/z-image/base_example.py
+uv run models/z-image/scripts/base_example.py
 ```
 
 For scripts that use quantization, you will need to install the quantization extras with this command:
@@ -56,6 +56,12 @@ For scripts that use a different attention backend, you need to install the atte
 
 ```bash
 uv sync --extra attentions
+```
+
+For scripts that use video, you need to install the video extras:
+
+```bash
+uv sync --extra video
 ```
 
 ## BENCHMARKS
