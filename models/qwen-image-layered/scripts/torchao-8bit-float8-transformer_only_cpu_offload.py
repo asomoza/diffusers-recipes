@@ -1,3 +1,5 @@
+import os
+
 import torch
 from diffusers import QwenImageLayeredPipeline, QwenImageTransformer2DModel
 from diffusers.utils import load_image
@@ -31,5 +33,8 @@ image = pipe(
     use_en_prompt=True,
 ).images[0]
 
+if not os.path.exists("./outputs/qwen-image-layered"):
+    os.makedirs("./outputs/qwen-image-layered")
+
 for i, image in enumerate(image):
-    image.save(f"{i}.png")
+    image.save(f"./outputs/qwen-image-layered/torchao-8bit-float8-transformer_only_cpu_offload_{i}.png")

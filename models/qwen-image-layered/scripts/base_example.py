@@ -1,3 +1,5 @@
+import os
+
 import torch
 from diffusers import QwenImageLayeredPipeline
 from PIL import Image
@@ -26,5 +28,8 @@ inputs = {
 
 image = pipeline(**inputs).images[0]
 
+if not os.path.exists("./outputs/qwen-image-layered"):
+    os.makedirs("./outputs/qwen-image-layered")
+
 for i, image in enumerate(image):
-    image.save(f"{i}.png")
+    image.save(f"./outputs/qwen-image-layered/base_example_{i}.png")

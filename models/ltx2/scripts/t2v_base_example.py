@@ -1,3 +1,5 @@
+import os
+
 import torch
 from diffusers import LTX2Pipeline
 from diffusers.pipelines.ltx2.export_utils import encode_video
@@ -26,10 +28,13 @@ video, audio = pipe(
 video = (video * 255).round().astype("uint8")
 video = torch.from_numpy(video)
 
+if not os.path.exists("./outputs/ltx2"):
+    os.makedirs("./outputs/ltx2")
+
 encode_video(
     video[0],
     fps=frame_rate,
     audio=audio[0].float().cpu(),
     audio_sample_rate=pipe.vocoder.config.output_sampling_rate,  # should be 24000
-    output_path="video.mp4",
+    output_path="./outputs/ltx2/t2v_base_example.mp4",
 )

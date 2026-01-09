@@ -30,4 +30,4 @@ image = pipe(
 if not os.path.exists("./outputs/qwen-image-edit-plus"):
     os.makedirs("./outputs/qwen-image-edit-plus")
 
-image.save("./outputs/qwen-image-edit-plus/layerwise.png")
+image.save("./outputs/qwen-image-edit-plus/base_example.png")

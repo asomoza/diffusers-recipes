@@ -1,3 +1,5 @@
+import os
+
 import torch
 from diffusers import QwenImageEditPlusPipeline, QwenImageTransformer2DModel
 from diffusers.utils import load_image
@@ -44,13 +46,16 @@ image2 = load_image(
 
 prompt = "the turtle from image 1 and the rabbit from image 2 are fighting in an epic battle scene at a beach in a tropical island, 35mm, depth of field, 50mm lens, f/3.5, cinematic lighting"
 
-output = pipe(
+image = pipe(
     image=[image1, image2],
     prompt=prompt,
     negative_prompt=" ",
     num_inference_steps=40,
     true_cfg_scale=4.0,
     generator=torch.Generator("cuda").manual_seed(42),
-)
-output_image = output.images[0]
-output_image.save("./outputs/qwen-image-edit-plus/sdnq-uint4.png")
+).images[0]
+
+if not os.path.exists("./outputs/qwen-image-edit-plus"):
+    os.makedirs("./outputs/qwen-image-edit-plus")
+
+image.save("./outputs/qwen-image-edit-plus/sdnq-uint4.png")
