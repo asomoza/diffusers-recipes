@@ -37,4 +37,4 @@ if not os.path.exists("./outputs/qwen-image-layered"):
     os.makedirs("./outputs/qwen-image-layered")
 
 for i, image in enumerate(image):
-    image.save(f"./outputs/qwen-image-layered/torchao-8bit-float8-transformer_only_cpu_offload_{i}.png")
+    image.save(f"./outputs/qwen-image-layered/torchao_8bit_float8_transformer_only_cpu_offload_{i}.png")

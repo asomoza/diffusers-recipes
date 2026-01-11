@@ -38,4 +38,4 @@ if not os.path.exists("./outputs/qwen-image-layered"):
 
 
 for i, image in enumerate(image):
-    image.save(f"./outputs/qwen-image-layered/bnb-4bit-both_cpu_offload_{i}.png")
+    image.save(f"./outputs/qwen-image-layered/bnb_4bit_both_cpu_offload_{i}.png")

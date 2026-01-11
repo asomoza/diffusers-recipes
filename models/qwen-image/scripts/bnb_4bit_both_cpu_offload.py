@@ -35,4 +35,4 @@ image = pipe(
 if not os.path.exists("./outputs/qwen-image"):
     os.makedirs("./outputs/qwen-image")
 
-image.save("./outputs/qwen-image/bnb-4bit-both_cpu_offload.png")
+image.save("./outputs/qwen-image/bnb_4bit_both_cpu_offload.png")
