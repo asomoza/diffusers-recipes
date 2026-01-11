@@ -10,6 +10,8 @@ from sdnq.loader import apply_sdnq_options_to_model
 from transformers import Gemma3ForConditionalGeneration
 
 
+onload_device = torch.device("cuda")
+offload_device = torch.device("cpu")
 torch_dtype = torch.bfloat16
 
 text_encoder = Gemma3ForConditionalGeneration.from_pretrained(
@@ -34,8 +36,14 @@ if triton_is_available and (torch.cuda.is_available() or torch.xpu.is_available(
     pipe.transformer = apply_sdnq_options_to_model(pipe.transformer, use_quantized_matmul=True)
     pipe.text_encoder = apply_sdnq_options_to_model(pipe.text_encoder, use_quantized_matmul=True)
 
+pipe.enable_group_offload(
+    onload_device=onload_device,
+    offload_device=offload_device,
+    offload_type="leaf_level",
+    use_stream=True,
+    record_stream=True,
+)
 pipe.vae.enable_tiling()
-pipe.enable_model_cpu_offload()
 
 image = load_image("https://huggingface.co/datasets/OzzyGT/diffusers-examples/resolve/main/ltx2/license.png")
 
@@ -68,5 +76,5 @@ encode_video(
     fps=frame_rate,
     audio=audio[0].float().cpu(),
     audio_sample_rate=pipe.vocoder.config.output_sampling_rate,  # should be 24000
-    output_path="./outputs/ltx2/i2v_sdnq-4bit-both.mp4",
+    output_path="./outputs/ltx2/i2v_sdnq_4bit_both_group_offload_leaf_stream.mp4",
 )

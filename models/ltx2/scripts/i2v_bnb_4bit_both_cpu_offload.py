@@ -1,24 +1,32 @@
 import os
 
 import torch
-from diffusers import LTX2ImageToVideoPipeline
+from diffusers import LTX2ImageToVideoPipeline, LTX2VideoTransformer3DModel
 from diffusers.pipelines.ltx2.export_utils import encode_video
 from diffusers.utils import load_image
+from transformers import Gemma3ForConditionalGeneration
 
 
-onload_device = torch.device("cuda")
-offload_device = torch.device("cpu")
+torch_dtype = torch.bfloat16
+
+text_encoder = Gemma3ForConditionalGeneration.from_pretrained(
+    "OzzyGT/LTX-2-bnb-4bit-text-encoder",
+    dtype=torch_dtype,
+    device_map="cpu",
+)
+
+transformer = LTX2VideoTransformer3DModel.from_pretrained(
+    "OzzyGT/LTX-2-bnb-4bit-transformer",
+    torch_dtype=torch_dtype,
+    device_map="cpu",
+)
 
 
-pipe = LTX2ImageToVideoPipeline.from_pretrained("Lightricks/LTX-2", torch_dtype=torch.bfloat16)
-pipe.enable_group_offload(
-    onload_device=onload_device,
-    offload_device=offload_device,
-    offload_type="leaf_level",
-    use_stream=True,
-    record_stream=True,
+pipe = LTX2ImageToVideoPipeline.from_pretrained(
+    "Lightricks/LTX-2", transformer=transformer, text_encoder=text_encoder, torch_dtype=torch_dtype
 )
 pipe.vae.enable_tiling()
+pipe.enable_model_cpu_offload()
 
 image = load_image("https://huggingface.co/datasets/OzzyGT/diffusers-examples/resolve/main/ltx2/license.png")
 
@@ -51,5 +59,5 @@ encode_video(
     fps=frame_rate,
     audio=audio[0].float().cpu(),
     audio_sample_rate=pipe.vocoder.config.output_sampling_rate,  # should be 24000
-    output_path="./outputs/ltx2/i2v_group_offloading_leaf_stream.mp4",
+    output_path="./outputs/ltx2/i2v_bnb_4bit_both_cpu_offload.mp4",
 )

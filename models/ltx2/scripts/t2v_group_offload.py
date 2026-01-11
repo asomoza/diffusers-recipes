@@ -1,31 +1,24 @@
 import os
 
 import torch
-from diffusers import LTX2Pipeline, LTX2VideoTransformer3DModel
+from diffusers import LTX2Pipeline
 from diffusers.pipelines.ltx2.export_utils import encode_video
-from transformers import Gemma3ForConditionalGeneration
 
 
-torch_dtype = torch.bfloat16
-
-text_encoder = Gemma3ForConditionalGeneration.from_pretrained(
-    "OzzyGT/LTX-2-bnb-4bit-text-encoder",
-    dtype=torch_dtype,
-    device_map="cpu",
-)
-
-transformer = LTX2VideoTransformer3DModel.from_pretrained(
-    "OzzyGT/LTX-2-bnb-4bit-transformer",
-    torch_dtype=torch_dtype,
-    device_map="cpu",
-)
+onload_device = torch.device("cuda")
+offload_device = torch.device("cpu")
 
 
-pipe = LTX2Pipeline.from_pretrained(
-    "Lightricks/LTX-2", transformer=transformer, text_encoder=text_encoder, torch_dtype=torch_dtype
+pipe = LTX2Pipeline.from_pretrained("Lightricks/LTX-2", torch_dtype=torch.bfloat16)
+pipe.enable_group_offload(
+    onload_device=onload_device,
+    offload_device=offload_device,
+    offload_type="leaf_level",
+    use_stream=True,
+    record_stream=True,
 )
 pipe.vae.enable_tiling()
-pipe.enable_model_cpu_offload()
+
 
 prompt = "Cinematic video with professional lighting, shot with a 35mm lens and shallow depth of field. The scene opens on an extreme close-up of a real car license plate reading “DIFFUSERS,” captured with macro focus, rock music kicks in and builds intensity. The setting is an outdoor wet mountain road, surrounded by dark silhouettes of hills, trees, and winding asphalt. The car is a high-performance modern sports car with large performance tires gripping the rain-soaked road. A deep combustion engine growl builds as the car suddenly accelerates forward."
 negative_prompt = "worst quality, inconsistent motion, blurry, jittery, distorted"
@@ -55,5 +48,5 @@ encode_video(
     fps=frame_rate,
     audio=audio[0].float().cpu(),
     audio_sample_rate=pipe.vocoder.config.output_sampling_rate,  # should be 24000
-    output_path="./outputs/ltx2/t2v_bnb-4bit-both.mp4",
+    output_path="./outputs/ltx2/t2v_group_offload.mp4",
 )
