@@ -6,6 +6,7 @@ from diffusers import LTX2ImageToVideoPipeline, LTX2LatentUpsamplePipeline, LTX2
 from diffusers.pipelines.ltx2.export_utils import encode_video
 from diffusers.pipelines.ltx2.latent_upsampler import LTX2LatentUpsamplerModel
 from diffusers.pipelines.ltx2.utils import DISTILLED_SIGMA_VALUES, STAGE_2_DISTILLED_SIGMA_VALUES
+from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
 from diffusers.utils import load_image
 from transformers import Gemma3ForConditionalGeneration
 
@@ -15,7 +16,7 @@ device = "cuda"
 model_path = "Lightricks/LTX-2"
 width = 768
 height = 512
-num_frames = 121
+num_frames = 241
 generator = torch.Generator("cuda").manual_seed(42)
 
 image = load_image(
@@ -87,6 +88,14 @@ del upsample_pipe
 del latent_upsampler
 gc.collect()
 torch.cuda.empty_cache()
+
+# patch for 241 frames
+stage_2_scheduler = FlowMatchEulerDiscreteScheduler.from_config(
+    pipe.scheduler.config,
+    use_dynamic_shifting=False,
+    shift_terminal=None,
+)
+pipe.scheduler = stage_2_scheduler
 
 video, audio = pipe(
     image=image,
