@@ -6,6 +6,7 @@ from diffusers import LTX2ImageToVideoPipeline, LTX2LatentUpsamplePipeline, LTX2
 from diffusers.pipelines.ltx2.export_utils import encode_video
 from diffusers.pipelines.ltx2.latent_upsampler import LTX2LatentUpsamplerModel
 from diffusers.pipelines.ltx2.utils import DISTILLED_SIGMA_VALUES, STAGE_2_DISTILLED_SIGMA_VALUES
+from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
 from diffusers.utils import load_image
 from transformers import Gemma3ForConditionalGeneration
 
@@ -13,8 +14,8 @@ from transformers import Gemma3ForConditionalGeneration
 torch_dtype = torch.bfloat16
 device = "cuda"
 model_path = "Lightricks/LTX-2"
-width = 384
-height = 256
+width = 768
+height = 512
 num_frames = 241
 generator = torch.Generator("cuda").manual_seed(42)
 
@@ -29,7 +30,7 @@ text_encoder = Gemma3ForConditionalGeneration.from_pretrained(
 )
 
 transformer = LTX2VideoTransformer3DModel.from_pretrained(
-    "OzzyGT/LTX-2-bnb-4bit-transformer",
+    "OzzyGT/LTX-2-bnb-4bit-transformer-distilled",
     torch_dtype=torch_dtype,
     device_map="cpu",
 )
@@ -47,9 +48,6 @@ pipe.vae.enable_tiling(
 )
 pipe.vae.use_framewise_encoding = True
 pipe.vae.use_framewise_decoding = True
-pipe.load_lora_weights(
-    "Lightricks/LTX-2", adapter_name="stage_2_distilled", weight_name="ltx-2-19b-distilled-lora-384.safetensors"
-)
 pipe.enable_model_cpu_offload()
 
 prompt = "An astronaut hatches from a fragile egg on the surface of the Moon, the shell cracking and peeling apart in gentle low-gravity motion. Fine lunar dust lifts and drifts outward with each movement, floating in slow arcs before settling back onto the ground. The astronaut pushes free in a deliberate, weightless motion, small fragments of the egg tumbling and spinning through the air. In the background, the deep darkness of space subtly shifts as stars glide with the camera's movement, emphasizing vast depth and scale. The camera performs a smooth, cinematic slow push-in, with natural parallax between the foreground dust, the astronaut, and the distant starfield. Ultra-realistic detail, physically accurate low-gravity motion, cinematic lighting, and a breath-taking, movie-like shot."
@@ -91,6 +89,14 @@ del latent_upsampler
 gc.collect()
 torch.cuda.empty_cache()
 
+# patch for 241 frames
+stage_2_scheduler = FlowMatchEulerDiscreteScheduler.from_config(
+    pipe.scheduler.config,
+    use_dynamic_shifting=False,
+    shift_terminal=None,
+)
+pipe.scheduler = stage_2_scheduler
+
 video, audio = pipe(
     image=image,
     latents=upscaled_video_latent,
@@ -120,5 +126,5 @@ encode_video(
     fps=frame_rate,
     audio=audio[0].float().cpu(),
     audio_sample_rate=pipe.vocoder.config.output_sampling_rate,
-    output_path="./outputs/ltx2/ltx2_2stage.mp4",
+    output_path="./outputs/ltx2/i2v_2_stages_distilled_transformer_bnb_4bit_10s.mp4",
 )

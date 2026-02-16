@@ -117,5 +117,5 @@ encode_video(
     fps=frame_rate,
     audio=audio[0].float().cpu(),
     audio_sample_rate=pipe.vocoder.config.output_sampling_rate,
-    output_path="./outputs/ltx2/ltx2_2stage.mp4",
+    output_path="./outputs/ltx2/i2v_2_stages_distilled_transformer_bnb_4bit.mp4",
 )
