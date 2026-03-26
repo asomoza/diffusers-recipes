@@ -1,9 +1,9 @@
 """
-LTX 2.3 One-Stage Text-to-Video Inference Script
+LTX 2.3 One-Stage Distilled Text-to-Video Inference Script
 
 Pipeline:
   Encode  -> Encode prompts (text_encoder + connectors only)
-  Stage 1 -> Generate video+audio with CFG (non-distilled, 30 steps)
+  Stage 1 -> Generate video+audio at full resolution (distilled, 8 steps, no CFG)
   Decode  -> Streaming temporal decode + audio decode
 
 Each step loads only what it needs and frees everything before the next step to minimize VRAM usage.
@@ -29,8 +29,9 @@ device = "cuda:0"
 offload_device = "cpu"
 dtype = torch.bfloat16
 
-MODEL_PATH = "dg845/LTX-2.3-Diffusers"
+MODEL_PATH = "OzzyGT/LTX-2.3-Distilled"
 DECODE_MODE = "streaming"  # "streaming" = low VRAM decode (tiles on CPU), "tiling" = on-GPU spatial tiling
+LOW_CPU_MEM_USAGE = True  # Reduces RAM usage during group offload by loading weights lazily
 
 # Target resolution
 width = 960
@@ -41,15 +42,15 @@ seed = None
 # Frame count must be k*8+1 for VAE temporal alignment
 num_frames = round(seconds * frame_rate) // 8 * 8 + 1
 
-# Pipeline args
-num_inference_steps = 30
-guidance_scale = 3.0
-audio_guidance_scale = 7.0
-guidance_rescale = 0.7
-audio_guidance_rescale = 0.7
-stg_scale = 1.0
-audio_stg_scale = 1.0
-spatio_temporal_guidance_blocks = [28]
+# Pipeline args (distilled: fewer steps, no CFG)
+num_inference_steps = 8
+guidance_scale = 1.0
+audio_guidance_scale = 1.0
+guidance_rescale = 0.0
+audio_guidance_rescale = 0.0
+stg_scale = 0.0
+audio_stg_scale = 0.0
+spatio_temporal_guidance_blocks = []
 modality_scale = 3.0
 audio_modality_scale = 3.0
 
@@ -64,14 +65,7 @@ In the background, soft mist drifts between massive tree trunks while distant le
 Ultra-realistic textures, natural lighting, shallow depth of field, cinematic focus transitions, physically accurate motion, rich environmental detail.
 Sound description: soft rainforest ambience, distant birds, gentle water drips, subtle wing flutters."""
 
-negative_prompt = """ blurry, out of focus, overexposed, underexposed, low contrast, washed out colors, excessive noise, grainy texture, poor lighting, flickering, motion blur, distorted proportions,
-  unnatural skin tones, deformed facial features, asymmetrical face, missing facial features, extra limbs, disfigured hands, wrong hand count, artifacts around text, inconsistent
-  perspective, camera shake, incorrect depth of field, background too sharp, background clutter, distracting reflections, harsh shadows, inconsistent lighting direction, color
-  banding, cartoonish rendering, 3D CGI look, unrealistic materials, uncanny valley effect, incorrect ethnicity, wrong gender, exaggerated expressions, wrong gaze direction,
-  mismatched lip sync, silent or muted audio, distorted voice, robotic voice, echo, background noise, off-sync audio, incorrect dialogue, added dialogue, repetitive speech, jittery
-  movement, awkward pauses, incorrect timing, unnatural transitions, inconsistent framing, tilted camera, flat lighting, inconsistent tone, cinematic oversaturation, stylized
-  filters, or AI artifacts.
-"""
+negative_prompt = ""
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -86,6 +80,11 @@ def flush():
 
 
 def get_ram_gb():
+    """Return heap RAM in GB (excludes mmap'd file pages that the OS can reclaim)."""
+    with open("/proc/self/status") as f:
+        for line in f:
+            if line.startswith("RssAnon:"):
+                return int(line.split()[1]) / 1024**2
     return psutil.Process().memory_info().rss / 1024**3
 
 
@@ -228,21 +227,21 @@ embeds_pipe = LTX2Pipeline.from_pretrained(
     scheduler=None,
     torch_dtype=dtype,
 )
-embeds_pipe.enable_sequential_cpu_offload()
+embeds_pipe.enable_group_offload(
+    onload_device=torch.device(device), offload_type="leaf_level", use_stream=True, low_cpu_mem_usage=LOW_CPU_MEM_USAGE
+)
 
 with torch.inference_mode():
     prompt_embeds, prompt_attention_mask, negative_prompt_embeds, negative_prompt_attention_mask = (
         embeds_pipe.encode_prompt(
             prompt=prompt,
             negative_prompt=negative_prompt,
-            do_classifier_free_guidance=True,
+            do_classifier_free_guidance=False,
         )
     )
 
 prompt_embeds = prompt_embeds.to(offload_device)
 prompt_attention_mask = prompt_attention_mask.to(offload_device)
-negative_prompt_embeds = negative_prompt_embeds.to(offload_device)
-negative_prompt_attention_mask = negative_prompt_attention_mask.to(offload_device)
 print(f"  prompt_embeds: {prompt_embeds.shape}")
 
 del embeds_pipe
@@ -260,14 +259,14 @@ pipe = LTX2Pipeline.from_pretrained(
     torch_dtype=dtype,
 )
 pipe.enable_group_offload(
-    onload_device=torch.device(device), offload_type="leaf_level", use_stream=True, low_cpu_mem_usage=True
+    onload_device=torch.device(device), offload_type="leaf_level", use_stream=True, low_cpu_mem_usage=LOW_CPU_MEM_USAGE
 )
 
 video_latent, audio_latent = pipe(
     prompt_embeds=prompt_embeds.to(device=device, dtype=dtype),
     prompt_attention_mask=prompt_attention_mask.to(device=device),
-    negative_prompt_embeds=negative_prompt_embeds.to(device=device, dtype=dtype),
-    negative_prompt_attention_mask=negative_prompt_attention_mask.to(device=device),
+    negative_prompt_embeds=None,
+    negative_prompt_attention_mask=None,
     width=width,
     height=height,
     num_frames=num_frames,
@@ -298,7 +297,7 @@ audio_vae = pipe.audio_vae
 vocoder = pipe.vocoder
 audio_sample_rate = vocoder.config.output_sampling_rate
 
-del prompt_embeds, prompt_attention_mask, negative_prompt_embeds, negative_prompt_attention_mask
+del prompt_embeds, prompt_attention_mask
 del pipe
 flush()
 step_end(f"Stage 1: Generate at {width}x{height}", t0)
@@ -344,7 +343,7 @@ step_end(f"Decode: Video ({DECODE_MODE}) + Audio", t0)
 # ──────────────────────────────────────────────────────────────────────────────
 t0 = step_start("Save output")
 os.makedirs("outputs", exist_ok=True)
-output_path = f"outputs/ltx23_one_stage_{width}x{height}_{seconds}s_seed_{seed}.mp4"
+output_path = f"outputs/ltx23_one_stage_distilled_{width}x{height}_{seconds}s_seed_{seed}.mp4"
 encode_video(
     video[0],
     fps=frame_rate,
