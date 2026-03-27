@@ -9,25 +9,6 @@ Pipeline:
   Decode  -> Streaming temporal decode + audio decode
 
 Each step loads only what it needs and frees everything before the next step to minimize VRAM usage.
-
-Benchmarks (1536x1024, 10s @ 24fps, 30 Stage 1 steps + 3 Stage 2 steps, RTX 5090):
-  All values are true peaks measured by a background polling thread (100ms interval).
-  VRAM is measured via CUDA driver (baseline-subtracted). RAM excludes mmap'd file pages.
-
-  UPSCALE_FACTOR=2, streaming decode:
-  ┌────────────────────────┬──────────┬───────────┬──────────┐
-  │ Step                   │ Time     │ Peak VRAM │ Peak RAM │
-  ├────────────────────────┼──────────┼───────────┼──────────┤
-  │ Encode prompts         │     9.8s │   5.01 GB │ 24.87 GB │
-  │ Stage 1 (768x512)      │   8m 39s │   9.93 GB │  2.33 GB │
-  │ Spatial Upscale 2x     │     1.3s │   2.46 GB │  2.40 GB │
-  │ Stage 2 (1536x1024)    │   1m 11s │  13.60 GB │  2.43 GB │
-  │ Decode (streaming)     │    18.4s │   5.12 GB │ 12.27 GB │
-  │ TOTAL                  │  10m 28s │  13.60 GB │ 24.87 GB │
-  └────────────────────────┴──────────┴───────────┴──────────┘
-
-  Note: The 24.87 GB RAM peak is transient — it occurs while loading the Gemma3 12B
-  text encoder and drops to <5 GB during inference. This fits comfortably in 32 GB RAM.
 """
 
 import ctypes
@@ -38,8 +19,10 @@ import time
 
 import psutil
 import torch
+from sdnq import SDNQConfig  # noqa: F401
+from transformers import Gemma3ForConditionalGeneration
 
-from diffusers import AutoencoderKLLTX2Video, FlowMatchEulerDiscreteScheduler
+from diffusers import AutoencoderKLLTX2Video, FlowMatchEulerDiscreteScheduler, LTX2VideoTransformer3DModel
 from diffusers.pipelines.ltx2 import LTX2Pipeline
 from diffusers.pipelines.ltx2.export_utils import encode_video
 from diffusers.pipelines.ltx2.latent_upsampler import LTX2LatentUpsamplerModel
@@ -53,7 +36,16 @@ offload_device = "cpu"
 dtype = torch.bfloat16
 
 STAGE_1_MODEL_PATH = "OzzyGT/LTX-2.3"
+STAGE_1_SDNQ_4BIT_PATH = "OzzyGT/LTX-2.3-sdnq-dynamic-int4"
+STAGE_1_SDNQ_8BIT_PATH = "OzzyGT/LTX-2.3-sdnq-dynamic-int8"
+STAGE_1_SDNQ_BITS = 4  # 4 or 8
+
 DISTILLED_MODEL_PATH = "OzzyGT/LTX-2.3-Distilled"
+STAGE_2_SDNQ_4BIT_PATH = "OzzyGT/LTX-2.3-Distilled-sdnq-dynamic-int4"
+STAGE_2_SDNQ_8BIT_PATH = "OzzyGT/LTX-2.3-Distilled-sdnq-dynamic-int8"
+STAGE_2_SDNQ_BITS = 4  # 4 or 8
+
+SDNQ_TEXT_ENCODER_BITS = 4  # None = no quantization (use STAGE_1_MODEL_PATH), 4 or 8 = use SDNQ quantized text encoder
 UPSCALE_FACTOR = 2  # 2 or 1.5
 UPSAMPLER_PATH = "OzzyGT/LTX-2.3-upsampler-x2" if UPSCALE_FACTOR == 2 else "OzzyGT/LTX-2.3-upsampler-x1.5"
 DECODE_MODE = "streaming"  # "streaming" = low VRAM decode (tiles on CPU), "tiling" = on-GPU spatial tiling
@@ -258,15 +250,23 @@ def vae_temporal_decode_streaming(
 # Step 0: Encode prompts (text_encoder + connectors only, no transformer/VAE)
 # ──────────────────────────────────────────────────────────────────────────────
 t0 = step_start("Step 0: Encode prompts")
-embeds_pipe = LTX2Pipeline.from_pretrained(
-    STAGE_1_MODEL_PATH,
-    transformer=None,
-    vae=None,
-    audio_vae=None,
-    vocoder=None,
-    scheduler=None,
-    torch_dtype=dtype,
-)
+embeds_pipe_kwargs = {
+    "transformer": None,
+    "vae": None,
+    "audio_vae": None,
+    "vocoder": None,
+    "scheduler": None,
+    "torch_dtype": dtype,
+}
+if SDNQ_TEXT_ENCODER_BITS is not None:
+    sdnq_te_path = STAGE_1_SDNQ_4BIT_PATH if SDNQ_TEXT_ENCODER_BITS == 4 else STAGE_1_SDNQ_8BIT_PATH
+    embeds_pipe_kwargs["text_encoder"] = Gemma3ForConditionalGeneration.from_pretrained(
+        sdnq_te_path,
+        subfolder="text_encoder",
+        dtype=dtype,
+    )
+
+embeds_pipe = LTX2Pipeline.from_pretrained(STAGE_1_MODEL_PATH, **embeds_pipe_kwargs)
 embeds_pipe.enable_group_offload(
     onload_device=torch.device(device), offload_type="leaf_level", use_stream=True, low_cpu_mem_usage=LOW_CPU_MEM_USAGE
 )
@@ -294,8 +294,17 @@ step_end("Step 0: Encode prompts", t0)
 # Stage 1: Generate at reduced resolution (no text_encoder needed)
 # ──────────────────────────────────────────────────────────────────────────────
 t0 = step_start(f"Stage 1: Generate at {stage1_width}x{stage1_height}")
+stage1_sdnq_path = STAGE_1_SDNQ_4BIT_PATH if STAGE_1_SDNQ_BITS == 4 else STAGE_1_SDNQ_8BIT_PATH
+transformer = LTX2VideoTransformer3DModel.from_pretrained(
+    stage1_sdnq_path,
+    subfolder="transformer",
+    torch_dtype=dtype,
+    device_map="cpu",
+)
+
 pipe = LTX2Pipeline.from_pretrained(
     STAGE_1_MODEL_PATH,
+    transformer=transformer,
     text_encoder=None,
     tokenizer=None,
     torch_dtype=dtype,
@@ -332,7 +341,7 @@ print(f"  Audio latent: {audio_latent.shape}")
 
 video_latent = video_latent.to(offload_device)
 audio_latent = audio_latent.to(offload_device)
-del pipe
+del pipe, transformer
 flush()
 step_end(f"Stage 1: Generate at {stage1_width}x{stage1_height}", t0)
 
@@ -357,8 +366,17 @@ step_end(f"Spatial Upscale: {UPSCALE_FACTOR}x", t0)
 # Output latents — we decode separately with streaming temporal tiling
 # ──────────────────────────────────────────────────────────────────────────────
 t0 = step_start(f"Stage 2: Refine at {width}x{height}")
+stage2_sdnq_path = STAGE_2_SDNQ_4BIT_PATH if STAGE_2_SDNQ_BITS == 4 else STAGE_2_SDNQ_8BIT_PATH
+transformer_stage2 = LTX2VideoTransformer3DModel.from_pretrained(
+    stage2_sdnq_path,
+    subfolder="transformer",
+    torch_dtype=dtype,
+    device_map="cpu",
+)
+
 pipe_stage2 = LTX2Pipeline.from_pretrained(
     DISTILLED_MODEL_PATH,
+    transformer=transformer_stage2,
     text_encoder=None,
     tokenizer=None,
     torch_dtype=dtype,
@@ -398,7 +416,7 @@ vocoder = pipe_stage2.vocoder
 audio_sample_rate = vocoder.config.output_sampling_rate
 
 del prompt_embeds, prompt_attention_mask, negative_prompt_embeds, negative_prompt_attention_mask
-del upscaled_video_latent, pipe_stage2
+del upscaled_video_latent, pipe_stage2, transformer_stage2
 flush()
 step_end(f"Stage 2: Refine at {width}x{height}", t0)
 
@@ -443,7 +461,7 @@ step_end(f"Decode: Video ({DECODE_MODE}) + Audio", t0)
 # ──────────────────────────────────────────────────────────────────────────────
 t0 = step_start("Save output")
 os.makedirs("outputs", exist_ok=True)
-output_path = f"outputs/ltx23_two_stage_{width}x{height}_{seconds}s_seed_{seed}.mp4"
+output_path = f"outputs/ltx23_two_stage_sdnq_s1_{STAGE_1_SDNQ_BITS}bit_s2_{STAGE_2_SDNQ_BITS}bit_{width}x{height}_{seconds}s_seed_{seed}.mp4"
 encode_video(
     video[0],
     fps=frame_rate,
