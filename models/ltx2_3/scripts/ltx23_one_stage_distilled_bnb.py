@@ -85,11 +85,14 @@ def flush():
 
 def get_ram_gb():
     """Return heap RAM in GB (excludes mmap'd file pages that the OS can reclaim)."""
-    with open("/proc/self/status") as f:
-        for line in f:
-            if line.startswith("RssAnon:"):
-                return int(line.split()[1]) / 1024**2
-    return psutil.Process().memory_info().rss / 1024**3
+    try:
+        with open("/proc/self/status") as f:
+            for line in f:
+                if line.startswith("RssAnon:"):
+                    return int(line.split()[1]) / 1024**2
+    except FileNotFoundError:
+        pass
+    return psutil.Process().memory_full_info().uss / 1024**3
 
 
 def get_gpu_used_gb():
