@@ -1,12 +1,11 @@
 import os
 
 import torch
-from sdnq import SDNQConfig  # noqa: F401
-from transformers import Gemma3ForConditionalGeneration
-
 from diffusers import FlowMatchEulerDiscreteScheduler, LTX2Pipeline, LTX2VideoTransformer3DModel
 from diffusers.pipelines.ltx2.export_utils import encode_video
 from diffusers.pipelines.ltx2.utils import DISTILLED_SIGMA_VALUES
+from sdnq import SDNQConfig  # noqa: F401
+from transformers import Gemma3ForConditionalGeneration
 
 
 torch_dtype = torch.bfloat16
@@ -75,5 +74,5 @@ encode_video(
     fps=frame_rate,
     audio=audio[0].float().cpu(),
     audio_sample_rate=pipe.vocoder.config.output_sampling_rate,  # should be 24000
-    output_path="./outputs/ltx23/t2v_sdnq-4bit-distilled-both.mp4",
+    output_path="./outputs/ltx23/t2v_sdnq_4bit_distilled_both_cpu_offload.mp4",
 )
