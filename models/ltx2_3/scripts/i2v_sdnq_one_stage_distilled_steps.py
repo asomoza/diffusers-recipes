@@ -16,7 +16,8 @@ dtype = torch.bfloat16
 onload_device = torch.device("cuda")
 offload_device = torch.device("cpu")
 MODEL_PATH = "OzzyGT/LTX-2.3-Distilled"
-SDNQ_MODEL_PATH = "OzzyGT/LTX-2.3-Distilled-sdnq-dynamic-int4"
+SDNQ_BITS = 4  # 4 or 8
+SDNQ_MODEL_PATH = f"OzzyGT/LTX-2.3-Distilled-sdnq-dynamic-int{SDNQ_BITS}"
 ENCODE_CPU_OFFLOAD = False  # True = sequential cpu offload, False = keep text encoder on GPU
 DENOISE_GROUP_OFFLOAD = True  # True = group offload transformer, False = keep transformer on GPU
 
