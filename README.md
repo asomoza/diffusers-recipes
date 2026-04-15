@@ -8,6 +8,7 @@ These recipes are designed so you can just copy and paste them into your environ
 
 ### CURRENT MODELS
 
+* [ERNIE-Image](https://github.com/asomoza/diffusers-recipes/blob/main/models/ernie_image/README.md)
 * [Z-Image](https://github.com/asomoza/diffusers-recipes/blob/main/models/z-image/README.md)
 
 ### USING THIS REPOSITORY
