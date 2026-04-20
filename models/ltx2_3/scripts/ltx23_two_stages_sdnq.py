@@ -460,8 +460,8 @@ step_end(f"Decode: Video ({DECODE_MODE}) + Audio", t0)
 # Save output
 # ──────────────────────────────────────────────────────────────────────────────
 t0 = step_start("Save output")
-os.makedirs("outputs", exist_ok=True)
-output_path = f"outputs/ltx23_two_stage_sdnq_s1_{STAGE_1_SDNQ_BITS}bit_s2_{STAGE_2_SDNQ_BITS}bit_{width}x{height}_{seconds}s_seed_{seed}.mp4"
+os.makedirs("outputs/ltx23", exist_ok=True)
+output_path = f"outputs/ltx23/ltx23_two_stage_sdnq_s1_{STAGE_1_SDNQ_BITS}bit_s2_{STAGE_2_SDNQ_BITS}bit_{width}x{height}_{seconds}s_seed_{seed}.mp4"
 encode_video(
     video[0],
     fps=frame_rate,
