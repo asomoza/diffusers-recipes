@@ -37,25 +37,29 @@ logger = logging.get_logger(__name__)
 @dataclass
 class LTX2ImageCondition:
     """
-    Image conditioning for LTX-2.3 — a single image anchored at a specific latent frame index.
+    Image conditioning for LTX-2.3 — a single image anchored at a specific pixel frame.
 
-    By convention, `index=0` is treated as a **replace** condition (hard constraint: the first-frame
-    token is set to the image latent and locked via the denoise mask). Any other index is treated
+    By convention, `frame=0` is treated as a **replace** condition (hard constraint: the first-frame
+    token is set to the image latent and locked via the denoise mask). Any other frame is treated
     as a **keyframe** condition (soft guidance: the image latent is appended as a reference token
-    with RoPE coordinates pointing at the target frame's position, so the model sees it but the
+    with RoPE coordinates pointing at the snapped latent block, so the model sees it but the
     surrounding frames can interpolate smoothly around it).
+
+    The LTX-2 VAE only allows anchors at pixel positions {0, 1, 9, 17, 25, ...} (i.e. `8N+1` for
+    `N>=1`, plus 0). The given `frame` is snapped DOWN to the nearest valid position internally;
+    if a snap occurs an INFO line is logged so callers can spot it. Examples (with VAE temporal
+    ratio 8): `frame=5` → pixel 1, `frame=10` → pixel 9, `frame=24` → pixel 17.
 
     Attributes:
         image: The image. Accepts any type handled by `VideoProcessor.preprocess_video`
             (`PIL.Image`, `np.ndarray` of shape `(H, W, C)`, `torch.Tensor` of shape `(C, H, W)`).
-        index: Latent frame index. `0` = first frame (replace). Negative indices count from the
-            end (e.g. `-1` = last latent frame, as a keyframe). Must be within
-            `[-latent_num_frames, latent_num_frames)`.
+        frame: Pixel frame index (0-based). `0` = first frame (replace). Negative indices count
+            from the end (e.g. `-1` = last pixel frame). Must be within `[-num_frames, num_frames)`.
         strength: Conditioning strength in `[0, 1]`. `1.0` = fully applied.
     """
 
     image: Any
-    index: int = 0
+    frame: int = 0
     strength: float = 1.0
 
 
@@ -129,10 +133,23 @@ class LTX2MultiModalPipeline(LTX2ConditionPipeline):
     Inherits the base `__init__`, text encoding, prompt-embed preparation, video conditioning mask
     machinery, audio/video packing, and guidance math from `LTX2ConditionPipeline`. Adds:
 
-    - `audio_conditions`: list of `LTX2AudioCondition` — time-ranged audio locks.
-    - `control_video` / `control_video_latents`: reference video for an IC-LoRA.
+    - `audio_conditions`: list of `LTX2AudioCondition` — time-ranged **source** audio locks
+      (replace / inpaint on the OUTPUT timeline). Independent of IC-LoRA.
+    - `control_video` / `control_video_latents`: reference video for a video IC-LoRA. Tokens are
+      appended with target-space spatial RoPE.
     - `control_downscale_factor`: spatial scale factor for a low-res reference video (from the LoRA card).
-    - `control_strength`: how clean the reference tokens are held (1.0 = fully clean).
+    - `control_strength`: how clean the video reference tokens are held (1.0 = fully clean).
+    - `control_audio` / `control_audio_latents`: **reference** audio for an audio IC-LoRA. Tokens are
+      PREPENDED to the audio sequence with RoPE coords shifted to negative time so the reference sits
+      at `t ∈ [-T_ref, 0)` while the target sits at `t ∈ [0, T_target)`. Independent from
+      `audio_conditions` (source) — the two can be combined: ref tokens are prepended (mask=1.0)
+      and the existing source mask is kept on the target portion.
+    - `control_audio_strength`: how clean the audio reference tokens are held (1.0 = fully clean).
+    - `identity_guidance_scale`: optional, **opt-in** extra forward pass per step on the
+      target-only audio (ref tokens stripped). The delta amplifies the contribution of the audio
+      reference on the target tokens — useful for ID-LoRA-style audio identity transfer. `0.0`
+      (default) disables the extra pass entirely so audio LoRAs that don't need it pay nothing.
+      Only takes effect when `control_audio` / `control_audio_latents` is also set.
     """
 
     def _waveform_to_mel_spectrogram(self, waveform: torch.Tensor) -> torch.Tensor:
@@ -359,40 +376,125 @@ class LTX2MultiModalPipeline(LTX2ConditionPipeline):
 
         return control_tokens, control_coords
 
+    def prepare_control_audio_latents(
+        self,
+        control_audio: torch.Tensor | None,
+        control_audio_latents: torch.Tensor | None,
+        batch_size: int,
+        device: torch.device,
+        dtype: torch.dtype,
+        generator: torch.Generator | None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """
+        Build audio IC-LoRA reference tokens and their RoPE coords shifted to negative time.
+
+        Mirrors the video IC-LoRA pattern in `prepare_control_latents`, but on the audio stream:
+        a raw waveform (or pre-encoded latents) is encoded by the audio VAE, packed, and given
+        audio-RoPE coords shifted to `t ∈ [-T_ref, 0)` so the reference sits before the target on
+        the audio time axis. Caller PREPENDS the returned tokens to `audio_latents` (and matching
+        clean / mask / coords) and STRIPS them again before audio decode.
+
+        `control_audio_latents` may be passed either packed `[B, L_ref, C*M]` (no extra processing)
+        or unpacked `[B, C, L_ref, M]` (auto packed + normalized) — same convention as
+        `prepare_audio_latents`.
+
+        Returns `(packed_ref_latents [B, L_ref, C*M], ref_coords [B, 1, L_ref, 2])`. Both `None`
+        when neither input is given.
+        """
+        if control_audio is None and control_audio_latents is None:
+            return None, None
+
+        if control_audio_latents is not None:
+            ref_latents = control_audio_latents.to(device=device, dtype=dtype)
+            if ref_latents.ndim == 4:
+                ref_latents = self._pack_audio_latents(ref_latents)
+                ref_latents = self._normalize_audio_latents(
+                    ref_latents, self.audio_vae.latents_mean, self.audio_vae.latents_std
+                )
+            elif ref_latents.ndim != 3:
+                raise ValueError(
+                    "`control_audio_latents` must be 3D packed `[B, L, C*M]` (assumed already "
+                    "normalized) or 4D unpacked `[B, C, L, M]`, got shape "
+                    f"{tuple(ref_latents.shape)}."
+                )
+        else:
+            mel = self._waveform_to_mel_spectrogram(control_audio.to(device=device))
+            mel = mel.to(dtype=self.audio_vae.dtype)
+            ref_latents_4d = retrieve_latents(self.audio_vae.encode(mel), generator=generator, sample_mode="argmax")
+            ref_latents_4d = ref_latents_4d.to(device=device, dtype=dtype)
+            ref_latents = self._pack_audio_latents(ref_latents_4d)
+            ref_latents = self._normalize_audio_latents(
+                ref_latents, self.audio_vae.latents_mean, self.audio_vae.latents_std
+            )
+
+        if ref_latents.size(0) == 1 and batch_size > 1:
+            ref_latents = ref_latents.expand(batch_size, -1, -1)
+        elif ref_latents.size(0) != batch_size:
+            raise ValueError(
+                f"control_audio batch size {ref_latents.size(0)} must be 1 or match batch_size={batch_size}."
+            )
+
+        ref_seq_len = ref_latents.shape[1]
+
+        # Build audio coords on a "positive" grid for the ref length, then shift the whole grid
+        # left by (ref_duration + one_latent_step) so the ref sits in `[-T_ref, 0)` and the target
+        # (which still uses its own `[0, T_target)` grid) is placed strictly after.
+        ref_coords = self.transformer.audio_rope.prepare_audio_coords(
+            batch_size, ref_seq_len, device
+        ).to(dtype=torch.float32)
+        time_per_latent = 1.0 / float(self.audio_latents_per_second)
+        ref_duration = ref_coords[..., -1, 1].max().item()
+        ref_coords = ref_coords - ref_duration - time_per_latent
+
+        return ref_latents, ref_coords
+
     def _split_image_conditions(
         self,
         image_conditions: list[LTX2ImageCondition] | None,
+        num_frames: int,
         latent_num_frames: int,
-    ) -> tuple[list[LTX2VideoCondition], list[LTX2ImageCondition]]:
+    ) -> tuple[list[LTX2VideoCondition], list[tuple[Any, int, float]]]:
         """
-        Route image conditions by index:
-        - `index == 0` (after negative-index resolution) → "replace" path via LTX2VideoCondition.
-        - other indices → "keyframe" path (sequence-concat with target-space RoPE).
+        Snap each pixel `frame` to its containing latent slot, then route:
+        - latent_idx == 0 → "replace" path via LTX2VideoCondition (hard constraint at frame 0).
+        - latent_idx > 0 → "keyframe" path (sequence-concat with target-space RoPE).
 
-        Returns `(replace_as_video_conditions, keyframe_conditions_resolved)`.
+        Returns `(replace_conditions, [(image, latent_idx, strength), ...])`. The keyframe entries
+        carry the resolved latent index so `prepare_keyframe_latents` doesn't re-snap.
         """
         replace_list: list[LTX2VideoCondition] = []
-        keyframe_list: list[LTX2ImageCondition] = []
+        keyframe_list: list[tuple[Any, int, float]] = []
         if not image_conditions:
             return replace_list, keyframe_list
 
+        vae_t = int(self.vae_temporal_compression_ratio)
         for cond in image_conditions:
-            idx = cond.index
-            if idx < 0:
-                idx = idx % latent_num_frames
-            if idx < 0 or idx >= latent_num_frames:
+            frame = cond.frame
+            if frame < 0:
+                frame = num_frames + frame
+            if frame < 0 or frame >= num_frames:
                 raise ValueError(
-                    f"LTX2ImageCondition index {cond.index} is out of range for latent_num_frames={latent_num_frames}."
+                    f"LTX2ImageCondition.frame {cond.frame} is out of range for num_frames={num_frames}."
                 )
-            if idx == 0:
+            # Snap pixel frame → latent slot. ceil(frame / vae_t) gives:
+            #   frame=0 → latent 0 (causal slot), frame 1..vae_t → latent 1, ..vae_t+1..2*vae_t → latent 2, ...
+            latent_idx = (frame + vae_t - 1) // vae_t
+            latent_idx = min(latent_idx, latent_num_frames - 1)
+            anchored_pixel = 0 if latent_idx == 0 else (latent_idx - 1) * vae_t + 1
+            if anchored_pixel != frame:
+                logger.info(
+                    f"LTX2ImageCondition: frame={cond.frame} snapped to pixel {anchored_pixel} "
+                    f"(latent slot {latent_idx})."
+                )
+            if latent_idx == 0:
                 replace_list.append(LTX2VideoCondition(frames=cond.image, index=0, strength=cond.strength))
             else:
-                keyframe_list.append(LTX2ImageCondition(image=cond.image, index=idx, strength=cond.strength))
+                keyframe_list.append((cond.image, latent_idx, cond.strength))
         return replace_list, keyframe_list
 
     def prepare_keyframe_latents(
         self,
-        keyframe_conditions: list[LTX2ImageCondition],
+        keyframe_conditions: list[tuple[Any, int, float]],
         height: int,
         width: int,
         batch_size: int,
@@ -405,9 +507,12 @@ class LTX2MultiModalPipeline(LTX2ConditionPipeline):
         Build keyframe tokens + their RoPE coords + per-token strength mask.
 
         Each keyframe image is VAE-encoded (as a 1-frame video), packed, and given RoPE coords
-        placed at its target latent frame index — so the model treats it as a reference anchored
-        at that frame position. Returns packed tokens `[B, N_kf, C]`, coords `[B, 3, N_kf, 2]`,
-        and strengths `[B, N_kf, 1]`.
+        anchored at the resolved latent slot — so the model treats it as a reference at that
+        position. Returns packed tokens `[B, N_kf, C]`, coords `[B, 3, N_kf, 2]`, and strengths
+        `[B, N_kf, 1]`.
+
+        `keyframe_conditions` items are `(image, latent_idx, strength)` tuples produced by
+        `_split_image_conditions` (pixel→latent snap already applied).
         """
         if not keyframe_conditions:
             return None, None, None
@@ -418,9 +523,9 @@ class LTX2MultiModalPipeline(LTX2ConditionPipeline):
         all_tokens = []
         all_coords = []
         all_strengths = []
-        for cond in keyframe_conditions:
+        for image, latent_idx, strength in keyframe_conditions:
             # Preprocess → encode a single-frame "video"
-            image_pixels = self.video_processor.preprocess_video(cond.image, height, width, resize_mode="crop")
+            image_pixels = self.video_processor.preprocess_video(image, height, width, resize_mode="crop")
             # ensure exactly one temporal frame (image inputs already yield F=1)
             image_pixels = image_pixels[:, :, :1]
             image_pixels = image_pixels.to(dtype=self.vae.dtype, device=device)
@@ -438,17 +543,28 @@ class LTX2MultiModalPipeline(LTX2ConditionPipeline):
                 image_latent, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size
             )  # [B, lh*lw, C]
 
-            # Build coords for 1 latent frame placed at target position `index`
-            # prepare_video_coords returns grids starting at t=0; we shift the temporal axis to `index`
+            # Build coords for 1 latent frame placed at target latent slot `latent_idx`.
+            # `prepare_video_coords` is called with num_frames=1 only to get the spatial axes;
+            # the temporal axis is overridden below to anchor the keyframe at the correct pixel
+            # frame via the VAE temporal scale + causal offset (otherwise a naive offset would
+            # land at pixel N instead of ~N*8).
             coords = self.transformer.rope.prepare_video_coords(
                 batch_size, 1, latent_height, latent_width, device, fps=frame_rate
             ).to(dtype=torch.float32)
-            # coords shape: [B, 3, N_patches, 2]; axis 1 = (frame, height, width); last axis = (start, end)
-            # prepare_video_coords already divides the temporal axis by fps; offset by index/fps in seconds
-            coords[:, 0, ...] = coords[:, 0, ...] + (cond.index / frame_rate)
+            # coords shape: [B, 3, N_patches, 2]; axis 1 = (frame, height, width); last axis = (start, end).
+            # Temporal mapping mirrors `prepare_video_coords`:
+            #   pixel_start = (latent_idx * vae_t + causal_offset - vae_t).clamp(0)
+            # For a single-image keyframe (num_pixel_frames == 1) the end is narrowed to
+            # `start + 1 pixel frame` so the RoPE midpoint lands on the anchored pixel frame
+            # instead of the VAE block centre. Matches upstream LTX-2 keyframe_cond.py.
+            vae_t = self.transformer.rope.scale_factors[0]
+            causal_offset = self.transformer.rope.causal_offset
+            pixel_t_start = max(0.0, float(latent_idx) * vae_t + causal_offset - vae_t)
+            coords[:, 0, ..., 0] = pixel_t_start / frame_rate
+            coords[:, 0, ..., 1] = (pixel_t_start + 1.0) / frame_rate
 
             strength_mask = torch.full(
-                (batch_size, tokens.shape[1], 1), fill_value=cond.strength, device=device, dtype=dtype
+                (batch_size, tokens.shape[1], 1), fill_value=strength, device=device, dtype=dtype
             )
 
             all_tokens.append(tokens)
@@ -496,6 +612,9 @@ class LTX2MultiModalPipeline(LTX2ConditionPipeline):
         control_video=None,
         control_video_latents=None,
         control_downscale_factor=1,
+        control_audio=None,
+        control_audio_latents=None,
+        control_audio_strength=1.0,
         num_frames=None,
         frame_rate=None,
     ):
@@ -546,6 +665,17 @@ class LTX2MultiModalPipeline(LTX2ConditionPipeline):
                 raise ValueError("Pass only one of `control_video` or `control_video_latents`, not both.")
             if not isinstance(control_downscale_factor, int) or control_downscale_factor < 1:
                 raise ValueError(f"control_downscale_factor must be a positive int, got {control_downscale_factor}.")
+            self._assert_ic_lora_loaded()
+
+        if control_audio is not None or control_audio_latents is not None:
+            if control_audio is not None and control_audio_latents is not None:
+                raise ValueError("Pass only one of `control_audio` or `control_audio_latents`, not both.")
+            if control_audio is not None and control_audio.ndim != 2:
+                raise ValueError(
+                    f"control_audio must be 2D (channels, samples); got shape {tuple(control_audio.shape)}."
+                )
+            if not (0.0 <= float(control_audio_strength) <= 1.0):
+                raise ValueError(f"control_audio_strength must be in [0, 1], got {control_audio_strength}.")
             self._assert_ic_lora_loaded()
 
         if image_conditions is not None:
@@ -605,6 +735,10 @@ class LTX2MultiModalPipeline(LTX2ConditionPipeline):
         control_video_latents: torch.Tensor | None = None,
         control_downscale_factor: int = 1,
         control_strength: float = 1.0,
+        control_audio: torch.Tensor | None = None,
+        control_audio_latents: torch.Tensor | None = None,
+        control_audio_strength: float = 1.0,
+        identity_guidance_scale: float = 0.0,
     ):
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
@@ -634,6 +768,9 @@ class LTX2MultiModalPipeline(LTX2ConditionPipeline):
             control_video=control_video,
             control_video_latents=control_video_latents,
             control_downscale_factor=control_downscale_factor,
+            control_audio=control_audio,
+            control_audio_latents=control_audio_latents,
+            control_audio_strength=control_audio_strength,
             num_frames=num_frames,
             frame_rate=frame_rate,
         )
@@ -712,7 +849,9 @@ class LTX2MultiModalPipeline(LTX2ConditionPipeline):
             _, _, latent_num_frames, latent_height, latent_width = latents.shape
 
         # Route image_conditions: frame-0 → replace (merge into video_conditions); others → keyframes
-        replace_img_conds, keyframe_img_conds = self._split_image_conditions(image_conditions, latent_num_frames)
+        replace_img_conds, keyframe_img_conds = self._split_image_conditions(
+            image_conditions, num_frames, latent_num_frames
+        )
         merged_replace_conditions = (video_conditions or []) + replace_img_conds
 
         num_channels_latents = self.transformer.config.in_channels
@@ -863,7 +1002,38 @@ class LTX2MultiModalPipeline(LTX2ConditionPipeline):
             # video_coords shape: [B, 3, N_tokens, 2] — concat on num_patches (dim=2)
             video_coords = torch.cat([video_coords, control_coords], dim=2)
 
-        # 6b. CFG duplication (matches parent's line 1288 and lines 1358-1360)
+        # 6c. Audio IC-LoRA reference-token PREPEND (sequence-dim, with negative-time RoPE)
+        control_audio_tokens, control_audio_coords = self.prepare_control_audio_latents(
+            control_audio=control_audio,
+            control_audio_latents=control_audio_latents,
+            batch_size=effective_batch,
+            device=device,
+            dtype=torch.float32,
+            generator=generator,
+        )
+        audio_ref_num_tokens = 0
+        if control_audio_tokens is not None:
+            audio_ref_num_tokens = control_audio_tokens.shape[1]
+            ref_audio_mask = torch.full(
+                (effective_batch, audio_ref_num_tokens, 1),
+                fill_value=control_audio_strength,
+                device=device,
+                dtype=audio_conditioning_mask.dtype,
+            )
+            # Prepend (NOT append): ref tokens precede the target on the audio time axis. The
+            # negative-time coords on `control_audio_coords` keep the target's `[0, T)` grid intact.
+            audio_latents = torch.cat([control_audio_tokens, audio_latents], dim=1)
+            audio_clean_latents = torch.cat([control_audio_tokens, audio_clean_latents], dim=1)
+            audio_conditioning_mask = torch.cat([ref_audio_mask, audio_conditioning_mask], dim=1)
+            # audio_coords shape: [B, 1, N_tokens, 2] — concat on num_patches (dim=2)
+            audio_coords = torch.cat([control_audio_coords, audio_coords], dim=2)
+
+        # Identity guidance is opt-in (default 0.0 = off) and only active when audio ref tokens
+        # are present. ID-LoRA-style audio LoRAs benefit; vanilla audio LoRAs leave it at 0.
+        identity_guidance_scale = float(identity_guidance_scale)
+        do_identity_guidance = identity_guidance_scale > 0.0 and audio_ref_num_tokens > 0
+
+        # 6d. CFG duplication (matches parent's line 1288 and lines 1358-1360)
         if self.do_classifier_free_guidance:
             conditioning_mask = torch.cat([conditioning_mask, conditioning_mask])
             audio_conditioning_mask = torch.cat([audio_conditioning_mask, audio_conditioning_mask])
@@ -936,7 +1106,11 @@ class LTX2MultiModalPipeline(LTX2ConditionPipeline):
                         noise_pred_audio - noise_pred_audio_uncond_text
                     )
 
-                    if self.do_spatio_temporal_guidance or self.do_modality_isolation_guidance:
+                    if (
+                        self.do_spatio_temporal_guidance
+                        or self.do_modality_isolation_guidance
+                        or do_identity_guidance
+                    ):
                         if i == 0:
                             video_prompt_embeds = connector_prompt_embeds.chunk(2, dim=0)[1]
                             audio_prompt_embeds = connector_audio_prompt_embeds.chunk(2, dim=0)[1]
@@ -1051,6 +1225,59 @@ class LTX2MultiModalPipeline(LTX2ConditionPipeline):
                 noise_pred_video_g = noise_pred_video + video_cfg_delta + video_stg_delta + video_modality_delta
                 noise_pred_audio_g = noise_pred_audio + audio_cfg_delta + audio_stg_delta + audio_modality_delta
 
+                # Identity guidance (audio IC-LoRA, opt-in): one extra forward pass on the
+                # TARGET-only audio (ref tokens stripped) using the positive prompt. The delta
+                # `scale * (x0_with_ref[:, ref:] - x0_noref)` is added only to the target slice
+                # of `noise_pred_audio_g`, leaving ref-token predictions untouched (they're
+                # locked by `audio_conditioning_mask=1.0` anyway). Mirrors ID-LoRA-2.3's
+                # `inference_one_stage.py` lines 294-308, adapted to the diffusers x0 round-trip.
+                if do_identity_guidance:
+                    audio_target_input = audio_latents[:, audio_ref_num_tokens:, :].to(
+                        dtype=prompt_embeds.dtype
+                    )
+                    audio_target_coords = audio_pos_ids[:, :, audio_ref_num_tokens:, :]
+                    audio_target_timestep = audio_timestep[:, audio_ref_num_tokens:]
+
+                    with self.transformer.cache_context("identity_guidance"):
+                        _, noise_pred_audio_noref = self.transformer(
+                            hidden_states=latents.to(dtype=prompt_embeds.dtype),
+                            audio_hidden_states=audio_target_input,
+                            encoder_hidden_states=video_prompt_embeds,
+                            audio_encoder_hidden_states=audio_prompt_embeds,
+                            timestep=video_timestep,
+                            audio_timestep=audio_target_timestep,
+                            sigma=timestep,
+                            encoder_attention_mask=prompt_attn_mask,
+                            audio_encoder_attention_mask=prompt_attn_mask,
+                            num_frames=latent_num_frames,
+                            height=latent_height,
+                            width=latent_width,
+                            fps=frame_rate,
+                            audio_num_frames=audio_num_frames,
+                            video_coords=video_pos_ids,
+                            audio_coords=audio_target_coords,
+                            isolate_modalities=False,
+                            spatio_temporal_guidance_blocks=None,
+                            perturbation_mask=None,
+                            use_cross_timestep=use_cross_timestep,
+                            attention_kwargs=attention_kwargs,
+                            return_dict=False,
+                        )
+                    noise_pred_audio_noref = noise_pred_audio_noref.float()
+                    # Convert velocity → x0 against the target-only noisy latent.
+                    audio_target_noisy = audio_latents[:, audio_ref_num_tokens:, :].float()
+                    audio_x0_noref = self.convert_velocity_to_x0(
+                        audio_target_noisy, noise_pred_audio_noref, i, audio_scheduler
+                    )
+                    # `noise_pred_audio` is the positive-prompt x0 WITH ref. Compare on target slice.
+                    id_delta = identity_guidance_scale * (
+                        noise_pred_audio[:, audio_ref_num_tokens:] - audio_x0_noref
+                    )
+                    noise_pred_audio_g = noise_pred_audio_g.clone()
+                    noise_pred_audio_g[:, audio_ref_num_tokens:] = (
+                        noise_pred_audio_g[:, audio_ref_num_tokens:] + id_delta
+                    )
+
                 if self.guidance_rescale > 0:
                     noise_pred_video = rescale_noise_cfg(
                         noise_pred_video_g, noise_pred_video, guidance_rescale=self.guidance_rescale
@@ -1103,6 +1330,10 @@ class LTX2MultiModalPipeline(LTX2ConditionPipeline):
         #    target_seq_len was captured before any sequence-dim concat.
         if keyframe_tokens is not None or control_tokens is not None:
             latents = latents[:, :target_seq_len, :]
+
+        # Strip PREPENDED audio reference tokens (audio IC-LoRA) before audio decode.
+        if audio_ref_num_tokens:
+            audio_latents = audio_latents[:, audio_ref_num_tokens:, :]
 
         latents = self._unpack_latents(
             latents,
