@@ -7,7 +7,6 @@ import numpy as np
 import PIL.Image
 import torch
 import torchaudio
-
 from diffusers.callbacks import MultiPipelineCallbacks, PipelineCallback
 from diffusers.image_processor import PipelineImageInput
 from diffusers.pipelines.ltx2.pipeline_ltx2_condition import (
@@ -235,26 +234,46 @@ class LTX2MultiModalPipeline(LTX2ConditionPipeline):
 
         if audio_conditions:
             duration_s = audio_latent_length / float(self.audio_latents_per_second)
+            sample_rate = self.audio_vae.config.sample_rate
+            target_samples = round(duration_s * sample_rate)
             for cond in audio_conditions:
-                mel = self._waveform_to_mel_spectrogram(cond.audio.to(device=device))
                 end_time = cond.end_time if cond.end_time is not None else duration_s
+                start_idx = max(0, round(cond.start_time * self.audio_latents_per_second))
+                end_idx = min(audio_latent_length, round(end_time * self.audio_latents_per_second))
+                if end_idx <= start_idx:
+                    continue
 
-                # VAE-encode in the VAE's dtype; keep unpacked (4D) so we can write into clean_4d.
+                # Zero-pad the waveform to the full target duration so the VAE sees in-distribution
+                # silence context on either side of the clip. Without this, the VAE's last latent
+                # token at the clip boundary encodes "audio terminates abruptly here" — a click /
+                # discontinuity when decoded.
+                wave = cond.audio.to(device=device)
+                if wave.ndim != 2:
+                    raise ValueError(
+                        f"`LTX2AudioCondition.audio` must be (channels, samples); got {tuple(wave.shape)}."
+                    )
+                leading_samples = max(0, round(cond.start_time * sample_rate))
+                max_user_samples = max(0, target_samples - leading_samples)
+                wave = wave[:, :max_user_samples]
+                padded = torch.zeros((wave.size(0), target_samples), device=device, dtype=wave.dtype)
+                padded[:, leading_samples : leading_samples + wave.size(1)] = wave
+
+                mel = self._waveform_to_mel_spectrogram(padded)
                 mel = mel.to(dtype=self.audio_vae.dtype)
                 cond_latent = retrieve_latents(self.audio_vae.encode(mel), generator=generator, sample_mode="argmax")
                 cond_latent = cond_latent.to(device=device, dtype=dtype)
-                # cond_latent shape: [1, C, L_cond, latent_mel_bins] — NOT yet normalized.
+                # cond_latent shape: [1, C, L_full, latent_mel_bins] — full timeline, NOT yet normalized.
 
-                start_idx = round(cond.start_time * self.audio_latents_per_second)
-                end_idx = round(end_time * self.audio_latents_per_second)
-                start_idx = max(0, start_idx)
-                end_idx = min(audio_latent_length, end_idx)
-                available = min(cond_latent.size(2), end_idx - start_idx)
+                available = min(end_idx - start_idx, cond_latent.size(2) - start_idx)
                 if available <= 0:
                     continue
 
-                # Broadcast batch dim: conditioning is applied identically across the batch
-                clean_4d[:, :, start_idx : start_idx + available, :] = cond_latent[:, :, :available, :]
+                # Broadcast batch dim: conditioning is applied identically across the batch.
+                # Only the original-audio window is locked by the mask; the surrounding VAE-encoded
+                # silence outside that window is harmless because mask=0 there (clean is unused).
+                clean_4d[:, :, start_idx : start_idx + available, :] = cond_latent[
+                    :, :, start_idx : start_idx + available, :
+                ]
                 mask_4d[:, :, start_idx : start_idx + available, :] = cond.strength
 
         # Pack everything the same way as `prepare_audio_latents` does, THEN normalize.
@@ -439,9 +458,9 @@ class LTX2MultiModalPipeline(LTX2ConditionPipeline):
         # Build audio coords on a "positive" grid for the ref length, then shift the whole grid
         # left by (ref_duration + one_latent_step) so the ref sits in `[-T_ref, 0)` and the target
         # (which still uses its own `[0, T_target)` grid) is placed strictly after.
-        ref_coords = self.transformer.audio_rope.prepare_audio_coords(
-            batch_size, ref_seq_len, device
-        ).to(dtype=torch.float32)
+        ref_coords = self.transformer.audio_rope.prepare_audio_coords(batch_size, ref_seq_len, device).to(
+            dtype=torch.float32
+        )
         time_per_latent = 1.0 / float(self.audio_latents_per_second)
         ref_duration = ref_coords[..., -1, 1].max().item()
         ref_coords = ref_coords - ref_duration - time_per_latent
@@ -473,9 +492,7 @@ class LTX2MultiModalPipeline(LTX2ConditionPipeline):
             if frame < 0:
                 frame = num_frames + frame
             if frame < 0 or frame >= num_frames:
-                raise ValueError(
-                    f"LTX2ImageCondition.frame {cond.frame} is out of range for num_frames={num_frames}."
-                )
+                raise ValueError(f"LTX2ImageCondition.frame {cond.frame} is out of range for num_frames={num_frames}.")
             # Snap pixel frame → latent slot. ceil(frame / vae_t) gives:
             #   frame=0 → latent 0 (causal slot), frame 1..vae_t → latent 1, ..vae_t+1..2*vae_t → latent 2, ...
             latent_idx = (frame + vae_t - 1) // vae_t
@@ -1106,11 +1123,7 @@ class LTX2MultiModalPipeline(LTX2ConditionPipeline):
                         noise_pred_audio - noise_pred_audio_uncond_text
                     )
 
-                    if (
-                        self.do_spatio_temporal_guidance
-                        or self.do_modality_isolation_guidance
-                        or do_identity_guidance
-                    ):
+                    if self.do_spatio_temporal_guidance or self.do_modality_isolation_guidance or do_identity_guidance:
                         if i == 0:
                             video_prompt_embeds = connector_prompt_embeds.chunk(2, dim=0)[1]
                             audio_prompt_embeds = connector_audio_prompt_embeds.chunk(2, dim=0)[1]
@@ -1232,9 +1245,7 @@ class LTX2MultiModalPipeline(LTX2ConditionPipeline):
                 # locked by `audio_conditioning_mask=1.0` anyway). Mirrors ID-LoRA-2.3's
                 # `inference_one_stage.py` lines 294-308, adapted to the diffusers x0 round-trip.
                 if do_identity_guidance:
-                    audio_target_input = audio_latents[:, audio_ref_num_tokens:, :].to(
-                        dtype=prompt_embeds.dtype
-                    )
+                    audio_target_input = audio_latents[:, audio_ref_num_tokens:, :].to(dtype=prompt_embeds.dtype)
                     audio_target_coords = audio_pos_ids[:, :, audio_ref_num_tokens:, :]
                     audio_target_timestep = audio_timestep[:, audio_ref_num_tokens:]
 
@@ -1270,9 +1281,7 @@ class LTX2MultiModalPipeline(LTX2ConditionPipeline):
                         audio_target_noisy, noise_pred_audio_noref, i, audio_scheduler
                     )
                     # `noise_pred_audio` is the positive-prompt x0 WITH ref. Compare on target slice.
-                    id_delta = identity_guidance_scale * (
-                        noise_pred_audio[:, audio_ref_num_tokens:] - audio_x0_noref
-                    )
+                    id_delta = identity_guidance_scale * (noise_pred_audio[:, audio_ref_num_tokens:] - audio_x0_noref)
                     noise_pred_audio_g = noise_pred_audio_g.clone()
                     noise_pred_audio_g[:, audio_ref_num_tokens:] = (
                         noise_pred_audio_g[:, audio_ref_num_tokens:] + id_delta
