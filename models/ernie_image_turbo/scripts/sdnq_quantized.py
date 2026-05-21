@@ -72,7 +72,7 @@ if triton_is_available and (torch.cuda.is_available() or torch.xpu.is_available(
     pipe.transformer = apply_sdnq_options_to_model(pipe.transformer, use_quantized_matmul=True)
     pipe.text_encoder = apply_sdnq_options_to_model(pipe.text_encoder, use_quantized_matmul=True)
     if USE_PROMPT_ENHANCER:
-        pipe.prompt_enhancer = apply_sdnq_options_to_model(pipe.pe, use_quantized_matmul=True)
+        pipe.pe = apply_sdnq_options_to_model(pipe.pe, use_quantized_matmul=True)
 
 pipe.enable_model_cpu_offload()
 
