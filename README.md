@@ -8,9 +8,22 @@ These recipes are designed so you can just copy and paste them into your environ
 
 ### CURRENT MODELS
 
+Image models:
+
 * [ERNIE-Image](https://github.com/asomoza/diffusers-recipes/blob/main/models/ernie_image/README.md)
 * [ERNIE-Image-Turbo](https://github.com/asomoza/diffusers-recipes/blob/main/models/ernie_image_turbo/README.md)
+* [FLUX.2-dev](https://github.com/asomoza/diffusers-recipes/blob/main/models/flux2_dev/README.md)
+* [FLUX.2-klein-9B](https://github.com/asomoza/diffusers-recipes/blob/main/models/flux2_klein_9B/README.md)
+* [GLM-Image](https://github.com/asomoza/diffusers-recipes/blob/main/models/glm-image/README.md)
+* [Qwen-Image](https://github.com/asomoza/diffusers-recipes/blob/main/models/qwen-image/README.md)
+* [Qwen-Image-Edit-Plus](https://github.com/asomoza/diffusers-recipes/blob/main/models/qwen-image-edit-plus/README.md)
+* [Qwen-Image-Layered](https://github.com/asomoza/diffusers-recipes/blob/main/models/qwen-image-layered/README.md)
 * [Z-Image](https://github.com/asomoza/diffusers-recipes/blob/main/models/z-image/README.md)
+
+Video models:
+
+* [LTX-2](https://github.com/asomoza/diffusers-recipes/blob/main/models/ltx2/README.md)
+* [LTX-2.3](https://github.com/asomoza/diffusers-recipes/blob/main/models/ltx2_3/README.md)
 
 ### USING THIS REPOSITORY
 
