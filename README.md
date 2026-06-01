@@ -10,6 +10,7 @@ These recipes are designed so you can just copy and paste them into your environ
 
 Image models:
 
+* [Anima-Base-v1.0](https://github.com/asomoza/diffusers-recipes/blob/main/models/anima/README.md)
 * [ERNIE-Image](https://github.com/asomoza/diffusers-recipes/blob/main/models/ernie_image/README.md)
 * [ERNIE-Image-Turbo](https://github.com/asomoza/diffusers-recipes/blob/main/models/ernie_image_turbo/README.md)
 * [FLUX.2-dev](https://github.com/asomoza/diffusers-recipes/blob/main/models/flux2_dev/README.md)
