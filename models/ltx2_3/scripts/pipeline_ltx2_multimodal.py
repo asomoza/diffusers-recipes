@@ -872,13 +872,18 @@ class LTX2MultiModalPipeline(LTX2ConditionPipeline):
         merged_replace_conditions = (video_conditions or []) + replace_img_conds
 
         num_channels_latents = self.transformer.config.in_channels
-        latents, conditioning_mask, clean_latents = self.prepare_latents(
+        # `prepare_latents` now returns a 4th value (`replace_keyframe_coords`) for any condition with
+        # `latent_idx > 0` that it appended as keyframe tokens to `latents`. We route image keyframes separately
+        # (see `prepare_keyframe_latents` below), so this is normally `None`; we still append its coords to
+        # `video_coords` when present to stay correct if `video_conditions` carry a non-zero `latent_idx`.
+        latents, conditioning_mask, clean_latents, replace_keyframe_coords = self.prepare_latents(
             merged_replace_conditions,
             effective_batch,
             num_channels_latents,
             height,
             width,
             num_frames,
+            frame_rate,
             noise_scale,
             torch.float32,
             device,
@@ -968,6 +973,8 @@ class LTX2MultiModalPipeline(LTX2ConditionPipeline):
         video_coords = self.transformer.rope.prepare_video_coords(
             latents.shape[0], latent_num_frames, latent_height, latent_width, latents.device, fps=frame_rate
         )
+        if replace_keyframe_coords is not None:
+            video_coords = torch.cat([video_coords, replace_keyframe_coords], dim=2)
         audio_coords = self.transformer.audio_rope.prepare_audio_coords(
             audio_latents.shape[0], audio_num_frames, audio_latents.device
         )
