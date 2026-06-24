@@ -16,6 +16,7 @@ Image models:
 * [FLUX.2-dev](https://github.com/asomoza/diffusers-recipes/blob/main/models/flux2_dev/README.md)
 * [FLUX.2-klein-9B](https://github.com/asomoza/diffusers-recipes/blob/main/models/flux2_klein_9B/README.md)
 * [GLM-Image](https://github.com/asomoza/diffusers-recipes/blob/main/models/glm-image/README.md)
+* [Krea-2-Turbo](https://github.com/asomoza/diffusers-recipes/blob/main/models/krea2_turbo/README.md)
 * [Qwen-Image](https://github.com/asomoza/diffusers-recipes/blob/main/models/qwen-image/README.md)
 * [Qwen-Image-Edit-Plus](https://github.com/asomoza/diffusers-recipes/blob/main/models/qwen-image-edit-plus/README.md)
 * [Qwen-Image-Layered](https://github.com/asomoza/diffusers-recipes/blob/main/models/qwen-image-layered/README.md)
