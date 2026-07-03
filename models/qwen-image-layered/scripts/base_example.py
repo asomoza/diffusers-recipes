@@ -2,20 +2,29 @@ import os
 
 import torch
 from diffusers import QwenImageLayeredPipeline
-from PIL import Image
+from diffusers.utils import load_image
 
 
-pipeline = QwenImageLayeredPipeline.from_pretrained(
-    "Qwen/Qwen-Image-Layered", torch_dtype=torch.bfloat16, device_map="cuda"
-)
+device = "cuda"
+dtype = torch.bfloat16
+repo_id = "Qwen/Qwen-Image-Layered"
+output_dir = "./outputs/qwen-image-layered"
+seed = None
 
-image = Image.open(
-    "https://huggingface.co/datasets/OzzyGT/diffusers-examples/blob/main/qwen-image-layered/20251220124407_2987430379.png"
+if not seed:
+    seed = torch.randint(0, 2**32, (1,)).item()
+generator = torch.Generator(device="cpu").manual_seed(seed)
+
+pipe = QwenImageLayeredPipeline.from_pretrained(repo_id, torch_dtype=dtype)
+pipe.to(device)
+
+image = load_image(
+    "https://huggingface.co/datasets/OzzyGT/diffusers-examples/resolve/main/qwen-image-layered/20251220124407_2987430379.png"
 ).convert("RGBA")
 
 inputs = {
     "image": image,
-    "generator": torch.Generator(device="cuda").manual_seed(777),
+    "generator": generator,
     "true_cfg_scale": 4.0,
     "negative_prompt": " ",
     "num_inference_steps": 50,
@@ -26,10 +35,10 @@ inputs = {
     "use_en_prompt": True,  # Automatic caption language if user does not provide caption
 }
 
-image = pipeline(**inputs).images[0]
+image = pipe(**inputs).images[0]
 
-if not os.path.exists("./outputs/qwen-image-layered"):
-    os.makedirs("./outputs/qwen-image-layered")
+if not os.path.exists(output_dir):
+    os.makedirs(output_dir)
 
 for i, image in enumerate(image):
-    image.save(f"./outputs/qwen-image-layered/base_example_{i}.png")
+    image.save(os.path.join(output_dir, f"base_example_{i}_{seed}.png"))

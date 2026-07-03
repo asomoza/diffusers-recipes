@@ -6,12 +6,23 @@ from torchao.quantization import Float8DynamicActivationFloat8WeightConfig
 from transformers import Qwen3Model, TorchAoConfig
 
 
+device = "cuda"
+dtype = torch.bfloat16
+repo_id = "Tongyi-MAI/Z-Image-Turbo"
+output_dir = "./outputs/zimage"
+seed = None
+prompt = """A classroom setting with a large green chalkboard on a wooden frame, illuminated by soft morning light from a window on the left. On the chalkboard, written in clear white chalk handwriting: 'Welcome to Diffusers', 'the library that empowers you to create, customize, and experiment with state of the art diffusion models.' Additional chalk notes appear underneath, illustrating what's possible like 'text-to-image', 'image-to-image', 'inpainting', and 'fine-tuning' sketched alongside tiny doodles of gears, sparkles, and miniature image frames. Wooden desks and chairs fill the room, each desk containing a natural scatter of notebooks, textbooks, and pencils. A couple of open books reveal diagrams of AI model architecture and diffusion processes. The walls are decorated with educational posters—some depicting mathematical formulas. Color scheme: muted greens, warm browns, and crisp white. Shallow depth of field emphasizes the chalkboard."""
+
+if not seed:
+    seed = torch.randint(0, 2**32, (1,)).item()
+generator = torch.Generator(device="cpu").manual_seed(seed)
+
 quant_config = Float8DynamicActivationFloat8WeightConfig()
 quantization_config = TorchAoConfig(quant_type=quant_config)
 
 
 text_encoder = Qwen3Model.from_pretrained(
-    "Tongyi-MAI/Z-Image-Turbo",
+    repo_id,
     subfolder="text_encoder",
     torch_dtype=torch.bfloat16,
     quantization_config=quantization_config,
@@ -24,13 +35,12 @@ transformer = ZImageTransformer2DModel.from_single_file(
 )
 
 pipe = ZImagePipeline.from_pretrained(
-    "Tongyi-MAI/Z-Image-Turbo",
+    repo_id,
     transformer=transformer,
     text_encoder=text_encoder,
-    torch_dtype=torch.bfloat16,
-).to("cuda")
-
-prompt = "A classroom setting with a large green chalkboard on a wooden frame, illuminated by soft morning light from a window on the left. On the chalkboard, written in clear white chalk handwriting: 'Welcome to Diffusers', 'the library that empowers you to create, customize, and experiment with state of the art diffusion models.' Additional chalk notes appear underneath, illustrating what's possible like 'text-to-image', 'image-to-image', 'inpainting', and 'fine-tuning' sketched alongside tiny doodles of gears, sparkles, and miniature image frames. Wooden desks and chairs fill the room, each desk containing a natural scatter of notebooks, textbooks, and pencils. A couple of open books reveal diagrams of AI model architecture and diffusion processes. The walls are decorated with educational posters—some depicting mathematical formulas. Color scheme: muted greens, warm browns, and crisp white. Shallow depth of field emphasizes the chalkboard."
+    torch_dtype=dtype,
+)
+pipe.to(device)
 
 image = pipe(
     prompt=prompt,
@@ -38,10 +48,10 @@ image = pipe(
     width=1024,
     num_inference_steps=9,
     guidance_scale=0.0,
-    generator=torch.Generator("cuda").manual_seed(42),
+    generator=generator,
 ).images[0]
 
-if not os.path.exists("./outputs/zimage"):
-    os.makedirs("./outputs/zimage")
+if not os.path.exists(output_dir):
+    os.makedirs(output_dir)
 
-image.save("./outputs/zimage/gguf_Q8_0_both.png")
+image.save(os.path.join(output_dir, f"gguf_Q8_0_both_{seed}.png"))

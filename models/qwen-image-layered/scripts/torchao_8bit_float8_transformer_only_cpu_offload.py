@@ -6,19 +6,27 @@ from diffusers.utils import load_image
 from transformers import Qwen2_5_VLForConditionalGeneration
 
 
+device = "cuda"
+dtype = torch.bfloat16
+repo_id = "Qwen/Qwen-Image-Layered"
+output_dir = "./outputs/qwen-image-layered"
+seed = None
+
+if not seed:
+    seed = torch.randint(0, 2**32, (1,)).item()
+generator = torch.Generator(device="cpu").manual_seed(seed)
+
 transformer = QwenImageTransformer2DModel.from_pretrained(
-    "OzzyGT/qwen-image-layered-torchao-float8-transformer", torch_dtype=torch.bfloat16, use_safetensors=False
+    "OzzyGT/qwen-image-layered-torchao-float8-transformer", torch_dtype=dtype, use_safetensors=False
 )
 
 text_encoder = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-    "Qwen/Qwen-Image-Layered",
+    repo_id,
     subfolder="text_encoder",
-    dtype=torch.bfloat16,
+    dtype=dtype,
 )
 
-pipe = QwenImageLayeredPipeline.from_pretrained(
-    "Qwen/Qwen-Image-Layered", transformer=transformer, torch_dtype=torch.bfloat16
-)
+pipe = QwenImageLayeredPipeline.from_pretrained(repo_id, transformer=transformer, torch_dtype=dtype)
 pipe.enable_model_cpu_offload()
 
 image = load_image(
@@ -28,13 +36,13 @@ image = load_image(
 image = pipe(
     image=image,
     negative_prompt=" ",
-    generator=torch.Generator("cuda").manual_seed(42),
+    generator=generator,
     cfg_normalize=True,
     use_en_prompt=True,
 ).images[0]
 
-if not os.path.exists("./outputs/qwen-image-layered"):
-    os.makedirs("./outputs/qwen-image-layered")
+if not os.path.exists(output_dir):
+    os.makedirs(output_dir)
 
 for i, image in enumerate(image):
-    image.save(f"./outputs/qwen-image-layered/torchao_8bit_float8_transformer_only_cpu_offload_{i}.png")
+    image.save(os.path.join(output_dir, f"torchao_8bit_float8_transformer_only_cpu_offload_{i}_{seed}.png"))

@@ -6,18 +6,25 @@ from diffusers.utils import load_image
 from transformers import Qwen2_5_VLForConditionalGeneration
 
 
-torch_dtype = torch.bfloat16
 device = "cuda"
+dtype = torch.bfloat16
+repo_id = "Qwen/Qwen-Image-Layered"
+output_dir = "./outputs/qwen-image-layered"
+seed = None
+
+if not seed:
+    seed = torch.randint(0, 2**32, (1,)).item()
+generator = torch.Generator(device="cpu").manual_seed(seed)
 
 transformer = QwenImageTransformer2DModel.from_pretrained(
-    "OzzyGT/qwen-image-layered-bnb-4bit-transformer", torch_dtype=torch_dtype
+    "OzzyGT/qwen-image-layered-bnb-4bit-transformer", torch_dtype=dtype
 )
 text_encoder = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-    "OzzyGT/qwen-image-layered-bnb-4bit-text-encoder", torch_dtype=torch_dtype
+    "OzzyGT/qwen-image-layered-bnb-4bit-text-encoder", torch_dtype=dtype
 )
 
 pipe = QwenImageLayeredPipeline.from_pretrained(
-    "Qwen/Qwen-Image-Layered", transformer=transformer, text_encoder=text_encoder, torch_dtype=torch_dtype
+    repo_id, transformer=transformer, text_encoder=text_encoder, torch_dtype=dtype
 )
 pipe.enable_model_cpu_offload()
 
@@ -28,14 +35,14 @@ image = load_image(
 image = pipe(
     image=image,
     negative_prompt=" ",
-    generator=torch.Generator("cuda").manual_seed(42),
+    generator=generator,
     cfg_normalize=True,
     use_en_prompt=True,
 ).images[0]
 
-if not os.path.exists("./outputs/qwen-image-layered"):
-    os.makedirs("./outputs/qwen-image-layered")
+if not os.path.exists(output_dir):
+    os.makedirs(output_dir)
 
 
 for i, image in enumerate(image):
-    image.save(f"./outputs/qwen-image-layered/bnb_4bit_both_cpu_offload_{i}.png")
+    image.save(os.path.join(output_dir, f"bnb_4bit_both_cpu_offload_{i}_{seed}.png"))
