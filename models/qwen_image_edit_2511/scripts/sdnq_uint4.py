@@ -12,7 +12,7 @@ from transformers import Qwen2_5_VLForConditionalGeneration
 device = "cuda"
 dtype = torch.bfloat16
 repo_id = "Qwen/Qwen-Image-Edit-2511"
-output_dir = "./outputs/qwen-image-edit-plus"
+output_dir = "./outputs/qwen_image_edit_2511"
 seed = None
 prompt = "the turtle from image 1 and the rabbit from image 2 are fighting in an epic battle scene at a beach in a tropical island, 35mm, depth of field, 50mm lens, f/3.5, cinematic lighting"
 
