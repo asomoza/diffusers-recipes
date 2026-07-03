@@ -18,6 +18,7 @@ Image models:
 * [GLM-Image](https://github.com/asomoza/diffusers-recipes/blob/main/models/glm-image/README.md)
 * [Krea-2-Turbo](https://github.com/asomoza/diffusers-recipes/blob/main/models/krea2_turbo/README.md)
 * [Qwen-Image](https://github.com/asomoza/diffusers-recipes/blob/main/models/qwen-image/README.md)
+* [Qwen-Image-2512](https://github.com/asomoza/diffusers-recipes/blob/main/models/qwen_image_2512/README.md)
 * [Qwen-Image-Edit-Plus](https://github.com/asomoza/diffusers-recipes/blob/main/models/qwen-image-edit-plus/README.md)
 * [Qwen-Image-Layered](https://github.com/asomoza/diffusers-recipes/blob/main/models/qwen-image-layered/README.md)
 * [Z-Image](https://github.com/asomoza/diffusers-recipes/blob/main/models/z-image/README.md)

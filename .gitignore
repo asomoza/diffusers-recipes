@@ -211,3 +211,5 @@ offload_temp/
 
 temp_models/
 outputs/
+
+uv.lock
