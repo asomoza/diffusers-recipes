@@ -264,7 +264,13 @@ class LTX2MultiModalPipeline(LTX2ConditionPipeline):
                 cond_latent = cond_latent.to(device=device, dtype=dtype)
                 # cond_latent shape: [1, C, L_full, latent_mel_bins] — full timeline, NOT yet normalized.
 
-                available = min(end_idx - start_idx, cond_latent.size(2) - start_idx)
+                # Lock only where the real (pre-pad) audio exists; leave tokens past the clip's
+                # natural end free (mask=0) so the model GENERATES audio for the uncovered tail
+                # instead of being pinned to the zero-padded silence. Matches the `end_time=None`
+                # docstring ("run to the natural end of `audio`") and Frame Artisan's outpainting.
+                audio_latent_len = round(wave.size(1) / sample_rate * self.audio_latents_per_second)
+                lock_end_idx = min(end_idx, start_idx + audio_latent_len)
+                available = min(lock_end_idx - start_idx, cond_latent.size(2) - start_idx)
                 if available <= 0:
                     continue
 
