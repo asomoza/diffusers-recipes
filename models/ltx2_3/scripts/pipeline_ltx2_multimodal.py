@@ -493,7 +493,8 @@ class LTX2MultiModalPipeline(LTX2ConditionPipeline):
             return replace_list, keyframe_list
 
         vae_t = int(self.vae_temporal_compression_ratio)
-        for cond in image_conditions:
+        seen_slots: dict[int, int] = {}  # latent_idx -> originating condition index
+        for cond_i, cond in enumerate(image_conditions):
             frame = cond.frame
             if frame < 0:
                 frame = num_frames + frame
@@ -504,6 +505,18 @@ class LTX2MultiModalPipeline(LTX2ConditionPipeline):
             latent_idx = (frame + vae_t - 1) // vae_t
             latent_idx = min(latent_idx, latent_num_frames - 1)
             anchored_pixel = 0 if latent_idx == 0 else (latent_idx - 1) * vae_t + 1
+            # Two images cannot share a latent slot: replaces would overwrite, keyframes would stack
+            # conflicting references at the same instant. Fail loud rather than silently drop one — no
+            # recovery gives what the caller intended. Keyed on latent_idx so it also catches two
+            # frame=0 replaces (both slot 0).
+            if latent_idx in seen_slots:
+                raise ValueError(
+                    f"image_conditions[{cond_i}] (frame={cond.frame}) and image_conditions[{seen_slots[latent_idx]}] "
+                    f"both snap to latent slot {latent_idx} (pixel {anchored_pixel}). Two images cannot occupy the "
+                    f"same latent frame — the VAE temporal ratio is {vae_t}, so anchors must be >={vae_t} pixel "
+                    f"frames apart and land on distinct 8N+1 positions ({{0, 1, 9, 17, 25, ...}})."
+                )
+            seen_slots[latent_idx] = cond_i
             if anchored_pixel != frame:
                 logger.info(
                     f"LTX2ImageCondition: frame={cond.frame} snapped to pixel {anchored_pixel} "
