@@ -1,13 +1,16 @@
 import os
 
 import torch
-from diffusers import ModularPipeline
+from diffusers import AutoencoderKLMiniMaxH3, ModularPipeline
 from diffusers.hooks import apply_group_offloading
 from diffusers.utils.export_utils import encode_video
 from sdnq import SDNQConfig  # noqa: F401
 from sdnq.common import use_torch_compile as triton_is_available
 from sdnq.loader import apply_sdnq_options_to_model
 
+
+# patch until fixed upstream, the fp32 pin covers the whole VAE and ignores dtype
+AutoencoderKLMiniMaxH3._keep_in_fp32_modules = []
 
 device = "cuda"
 dtype = torch.bfloat16
