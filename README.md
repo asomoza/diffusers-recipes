@@ -26,6 +26,7 @@ Video models:
 
 * [LTX-2](https://github.com/asomoza/diffusers-recipes/blob/main/models/ltx2/README.md)
 * [LTX-2.3](https://github.com/asomoza/diffusers-recipes/blob/main/models/ltx2_3/README.md)
+* [MiniMax-H3](https://github.com/asomoza/diffusers-recipes/blob/main/models/minimax_h3/README.md)
 
 ### USING THIS REPOSITORY
 
