@@ -12,11 +12,11 @@ device = "cuda"
 dtype = torch.bfloat16
 repo_id = "MiniMaxAI/MiniMax-H3"
 output_dir = "./outputs/minimax_h3"
-prompt = """integrated_multimodal_description: [Shot 1] Live-action, cinematic food commercial, a macro shot centered on a matte black slate plate against a warm charcoal backdrop, lit by a hard key light from the upper left. In slow motion a toasted brioche bun heel drops into frame and settles on the slate, followed by a thick flame-grilled beef patty that lands with a shudder and throws a fine spray of juice through the light. A square of orange cheddar falls next and immediately begins to slump over the patty edges. A crisp green lettuce leaf and two thick tomato slices sail in and settle into place. A male announcer with a deep, warm, gravelly voice (S1) says in an off-screen voiceover: <d>[English] Stacked to order. Never frozen.</d> The camera pushes in with small amplitude at slow speed as the top bun crown descends and lands, compressing the stack slightly. [Shot 2] At 00:04.500, the camera cuts to a wider shot and tilts up with small amplitude at slow speed from the finished burger to a hand-painted wooden sign reading "COPPER CREEK BURGER CO." mounted above a black chalkboard menu reading "DOUBLE SMASH 9.50", "BACON STACK 11.00", and "MALTED SHAKE 5.00", while the announcer (S1) says in an off-screen voiceover: <d>[English] Copper Creek. Since nineteen fifty-two.</d>
+prompt = """integrated_multimodal_description: Live-action overhead shot looking straight down at a polished dark wooden table under bright even studio light. Many white dominoes stand on end in tightly packed lines, and those lines are laid out so that together they form large block capital letters spelling "DIFFUSERS". At the start the camera is close in over the very first domino at the left end of the word, so only that domino and a few of its neighbours fill the frame. The dominoes spelling "DIFFUSERS" are the only text in the shot. [0s-0.8s] Everything is completely still and a single index finger rests lightly against the first standing domino. [0.8s-1.2s] The finger tips the first domino over and then lifts away out of the frame. [1.2s-4.0s] The dominoes topple one after another in one continuous chain that runs away along the lines, and at the same time the camera pulls straight back overhead at a steady slow speed, so that more and more of the layout comes into view as the falling chain travels through it. [4.0s-5.1s] All action is over. Every domino is lying flat, the camera has stopped moving, and the fallen white dominoes clearly spell "DIFFUSERS" across the dark table. Nothing moves and nothing else happens for the rest of the shot.
 
-overall_soundscape: A low warm room tone runs underneath while each component lands with its own weight: the soft give of the bun, a heavy wet slap from the patty, and the faint crackle of rendered fat. A brief sizzle rises as the cheese slumps, followed by the light crunch of lettuce and the dull knock of the top bun settling.
+overall_soundscape: A quiet room tone for the first beat. A single soft tap as the finger tips the first domino over, then immediately a rapid cascade of sharp wooden clicks as each domino strikes the next, running away from the microphone in a steady quick rhythm. The cascade finishes as the last domino lands, leaving only the quiet room tone for the rest of the shot.
 
-non_diegetic_music: An upright bass and brushed snare pattern at a medium-slow tempo, joined by a single clean electric guitar figure that lands on the beat of each falling ingredient and resolves into a held chord at the end."""
+non_diegetic_music: No music during the first beat. A light playful pizzicato string figure enters as the chain starts falling and keeps pace with the cascade. Over the last second it resolves onto one clean final chord that lands on the last frame."""
 
 pipe = ModularPipeline.from_pretrained(repo_id, workflow="t2va")
 pipe.load_components(dtype=dtype)
@@ -24,11 +24,11 @@ pipe.to(device)
 
 state = pipe(
     prompt=prompt,
-    height=768,
-    width=1344,
+    height=480,
+    width=864,
     num_frames=124,
-    num_inference_steps=30,
-    generator=torch.Generator("cpu").manual_seed(42),
+    num_inference_steps=20,
+    generator=torch.Generator("cpu").manual_seed(2236370900),
     output=["videos", "audio", "sampling_rate"],
 )
 
