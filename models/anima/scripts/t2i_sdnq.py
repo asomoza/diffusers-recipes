@@ -28,7 +28,7 @@ pipe.load_components(torch_dtype=dtype)
 if triton_is_available:
     for name, comp in pipe.components.items():
         if getattr(comp, "quantization_config", None) is not None:
-            apply_sdnq_options_to_model(comp, use_quantized_matmul=True)
+            setattr(pipe, name, apply_sdnq_options_to_model(comp, use_quantized_matmul=True))
 
 pipe.to(device)
 
