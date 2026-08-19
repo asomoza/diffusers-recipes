@@ -9,7 +9,9 @@ from sdnq.common import use_torch_compile as triton_is_available
 from sdnq.loader import apply_sdnq_options_to_model
 
 
-os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+# Use only on CUDA
+if torch.version.hip is None:
+    os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 # patch until fixed upstream, the fp32 pin covers the whole VAE and ignores dtype
 AutoencoderKLMiniMaxH3._keep_in_fp32_modules = []
