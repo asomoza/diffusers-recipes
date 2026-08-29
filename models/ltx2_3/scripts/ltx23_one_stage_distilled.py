@@ -9,6 +9,7 @@ Pipeline:
 Each step loads only what it needs and frees everything before the next step to minimize VRAM usage.
 """
 
+import contextlib
 import ctypes
 import gc
 import os
@@ -17,10 +18,9 @@ import time
 
 import psutil
 import torch
-
 from diffusers import AutoencoderKLLTX2Video
 from diffusers.pipelines.ltx2 import LTX2Pipeline
-from diffusers.pipelines.ltx2.export_utils import encode_video
+from diffusers.utils.export_utils import encode_video
 from diffusers.video_processor import VideoProcessor
 
 
@@ -73,10 +73,8 @@ def flush():
     gc.collect()
     torch.cuda.empty_cache()
     torch.cuda.synchronize()
-    try:
+    with contextlib.suppress(OSError, AttributeError):
         ctypes.CDLL("libc.so.6").malloc_trim(0)
-    except Exception:
-        pass
 
 
 def get_ram_gb():

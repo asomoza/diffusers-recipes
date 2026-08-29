@@ -2,7 +2,7 @@ import os
 
 import torch
 from diffusers import LTX2Pipeline
-from diffusers.pipelines.ltx2.export_utils import encode_video
+from diffusers.utils.export_utils import encode_video
 
 
 torch_dtype = torch.bfloat16

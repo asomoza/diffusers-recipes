@@ -2,9 +2,9 @@ import os
 
 import torch
 from diffusers import LTX2VideoTransformer3DModel
-from diffusers.pipelines.ltx2.export_utils import encode_video
 from diffusers.pipelines.ltx2.utils import DISTILLED_SIGMA_VALUES
 from diffusers.utils import load_image
+from diffusers.utils.export_utils import encode_video
 from pipeline_ltx2_multimodal import LTX2AudioCondition, LTX2ImageCondition, LTX2MultiModalPipeline, load_audio
 from sdnq import SDNQConfig  # noqa: F401 — registers SDNQ weight loader
 

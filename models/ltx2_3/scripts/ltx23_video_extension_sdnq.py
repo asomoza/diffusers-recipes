@@ -2,7 +2,7 @@ import os
 
 import torch
 from diffusers import LTX2VideoTransformer3DModel
-from diffusers.pipelines.ltx2.export_utils import encode_video
+from diffusers.utils.export_utils import encode_video
 from pipeline_ltx2_multimodal import (
     LTX2AudioCondition,
     LTX2MultiModalPipeline,

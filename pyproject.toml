@@ -6,38 +6,63 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
   "accelerate>=1.14.0",
-  "diffusers>=0.39.0.dev0",
+  "diffusers>=0.41.0.dev0",
   "diffusers-mm>=0.4.0",
-  "peft>=0.19.1",
-  "torch>=2.12.0",
+  "peft>=0.20.0",
+  "torch>=2.13.0",
   "torchaudio>=2.11.0",
-  "torchcodec>=0.14.0",
-  "torchvision>=0.27.0",
-  "transformers>=5.12.0",
+  "torchcodec>=0.16.0",
+  "torchvision>=0.28.0",
+  "transformers>=5.16.1",
 ]
 
 [project.optional-dependencies]
 benchmark = ["nvidia-ml-py>=13.610.43"]
 quantization = [
-  "bitsandbytes>=0.49.2",
-  "torchao>=0.17.0",
+  "bitsandbytes>=0.50.2",
+  "torchao>=0.18.0",
   "gguf>=0.19.0",
-  "sdnq>=0.1.9",
+  "sdnq>=0.2.5",
 ]
-attentions = ["kernels>=0.12.0,<0.13"]
-video = ["av>=17.1.0"]
+attentions = ["kernels>=0.16.1"]
+video = ["av>=18.1.0"]
 all = [
   "nvidia-ml-py>=13.610.43",
-  "bitsandbytes>=0.49.2",
-  "torchao>=0.17.0",
+  "bitsandbytes>=0.50.2",
+  "torchao>=0.18.0",
   "gguf>=0.19.0",
-  "sdnq>=0.2.0",
-  "kernels>=0.12.0,<0.13",
-  "av>=17.1.0",
+  "sdnq>=0.2.5",
+  "kernels>=0.16.1",
+  "av>=18.1.0",
 ]
 
 [tool.ruff]
 line-length = 119
+
+[tool.ruff.lint]
+select = [
+  "E",    # pycodestyle errors
+  "W",    # pycodestyle warnings
+  "F",    # pyflakes
+  "I",    # isort
+  "UP",   # pyupgrade
+  "B",    # flake8-bugbear
+  "C4",   # flake8-comprehensions
+  "S",    # flake8-bandit
+  "BLE",  # flake8-blind-except
+  "EXE",  # flake8-executable
+  "PIE",  # flake8-pie
+  "SIM",  # flake8-simplify
+  "PERF", # perflint
+  "TRY",  # tryceratops
+  "RUF",  # ruff-specific
+]
+ignore = [
+  "E501",    # line length is handled by the formatter; recipe prompts are long single strings
+  "RUF001",  # prompts intentionally contain typographic quotes/dashes
+  "RUF003",
+  "TRY003",  # long messages inline are fine for a flat script
+]
 
 [tool.ruff.lint.isort]
 lines-after-imports = 2

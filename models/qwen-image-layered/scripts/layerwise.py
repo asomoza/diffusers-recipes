@@ -23,7 +23,7 @@ image = load_image(
     "https://huggingface.co/datasets/OzzyGT/diffusers-examples/resolve/main/qwen-image-layered/20251220124407_2987430379.png"
 ).convert("RGBA")
 
-image = pipe(
+images = pipe(
     image=image,
     negative_prompt=" ",
     generator=generator,
@@ -34,5 +34,5 @@ image = pipe(
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
-for i, image in enumerate(image):
+for i, image in enumerate(images):
     image.save(os.path.join(output_dir, f"layerwise_{i}_{seed}.png"))

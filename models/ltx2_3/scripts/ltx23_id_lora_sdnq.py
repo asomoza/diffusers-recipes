@@ -4,7 +4,7 @@ from io import BytesIO
 import requests
 import torch
 from diffusers import LTX2VideoTransformer3DModel
-from diffusers.pipelines.ltx2.export_utils import encode_video
+from diffusers.utils.export_utils import encode_video
 from PIL import Image
 from pipeline_ltx2_multimodal import LTX2ImageCondition, LTX2MultiModalPipeline, load_audio
 from sdnq import SDNQConfig  # noqa: F401 — registers SDNQ weight loader

@@ -35,10 +35,10 @@ inputs = {
     "use_en_prompt": True,  # Automatic caption language if user does not provide caption
 }
 
-image = pipe(**inputs).images[0]
+images = pipe(**inputs).images[0]
 
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
-for i, image in enumerate(image):
+for i, image in enumerate(images):
     image.save(os.path.join(output_dir, f"base_example_{i}_{seed}.png"))

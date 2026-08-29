@@ -2,8 +2,8 @@ import os
 
 import torch
 from diffusers import FlowMatchEulerDiscreteScheduler, LTX2Pipeline, LTX2VideoTransformer3DModel
-from diffusers.pipelines.ltx2.export_utils import encode_video
 from diffusers.pipelines.ltx2.utils import DISTILLED_SIGMA_VALUES
+from diffusers.utils.export_utils import encode_video
 from sdnq import SDNQConfig  # noqa: F401
 from transformers import Gemma3ForConditionalGeneration
 

@@ -4,8 +4,8 @@ import os
 import torch
 from diffusers import LTX2VideoTransformer3DModel
 from diffusers.pipelines.ltx2 import LTX2ImageToVideoPipeline
-from diffusers.pipelines.ltx2.export_utils import encode_video
 from diffusers.utils import load_image
+from diffusers.utils.export_utils import encode_video
 from diffusers.video_processor import VideoProcessor
 from sdnq import SDNQConfig  # noqa: F401 — registers SDNQ into transformers
 from transformers import Gemma3ForConditionalGeneration

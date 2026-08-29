@@ -30,6 +30,7 @@ Benchmarks (1536x1024, 10s @ 24fps, 30 Stage 1 steps + 3 Stage 2 steps, RTX 5090
   text encoder and drops to <5 GB during inference. This fits comfortably in 32 GB RAM.
 """
 
+import contextlib
 import ctypes
 import gc
 import os
@@ -38,12 +39,11 @@ import time
 
 import psutil
 import torch
-
 from diffusers import AutoencoderKLLTX2Video, FlowMatchEulerDiscreteScheduler
 from diffusers.pipelines.ltx2 import LTX2Pipeline
-from diffusers.pipelines.ltx2.export_utils import encode_video
 from diffusers.pipelines.ltx2.latent_upsampler import LTX2LatentUpsamplerModel
 from diffusers.pipelines.ltx2.utils import STAGE_2_DISTILLED_SIGMA_VALUES
+from diffusers.utils.export_utils import encode_video
 from diffusers.video_processor import VideoProcessor
 
 
@@ -110,10 +110,8 @@ def flush():
     gc.collect()
     torch.cuda.empty_cache()
     torch.cuda.synchronize()
-    try:
+    with contextlib.suppress(OSError, AttributeError):
         ctypes.CDLL("libc.so.6").malloc_trim(0)
-    except Exception:
-        pass
 
 
 def get_ram_gb():

@@ -1,5 +1,7 @@
 import atexit
+import contextlib
 import csv
+import ctypes
 import gc
 import os
 import re
@@ -51,7 +53,7 @@ def _parse_clock_to_seconds(s: str) -> float | None:
     # Accept "MM:SS" or "HH:MM:SS"
     try:
         parts = [int(p) for p in s.strip().split(":")]
-    except Exception:
+    except ValueError:
         return None
 
     if len(parts) == 2:
@@ -74,15 +76,14 @@ def _nvml_init_if_needed() -> bool:
         _NVML_INITIALIZED = True
 
         def _shutdown() -> None:
-            try:
+            with contextlib.suppress(pynvml.NVMLError):
                 pynvml.nvmlShutdown()
-            except Exception:
-                pass
 
         atexit.register(_shutdown)
-        return True
-    except Exception:
+    except pynvml.NVMLError:
         return False
+    else:
+        return True
 
 
 def _nvml_pid_vram_bytes_on_handle(handle, pid: int) -> int:
@@ -96,7 +97,7 @@ def _nvml_pid_vram_bytes_on_handle(handle, pid: int) -> int:
 
         try:
             return fn(handle)
-        except Exception:
+        except pynvml.NVMLError:
             return []
 
     procs = []
@@ -109,7 +110,7 @@ def _nvml_pid_vram_bytes_on_handle(handle, pid: int) -> int:
                 m = int(getattr(p, "usedGpuMemory", 0) or 0)
                 if m > 0:
                     used += m
-        except Exception:
+        except (AttributeError, TypeError, ValueError):
             continue
 
     return used
@@ -128,12 +129,8 @@ def _get_process_vram_used_gb(pid: int) -> float:
 
 
 def _malloc_trim() -> None:
-    try:
-        import ctypes  # noqa: PLC0415
-
+    with contextlib.suppress(OSError, AttributeError):
         ctypes.CDLL("libc.so.6").malloc_trim(0)
-    except Exception:
-        pass
 
 
 def _cleanup_between_runs() -> None:
@@ -148,7 +145,7 @@ def _extract_denoise_time_s_from_text(text: str) -> float | None:
     for m in _DENOISE_RE.finditer(text):
         try:
             last_marker = float(m.group(1))
-        except Exception:
+        except ValueError:
             continue
     if last_marker is not None:
         return last_marker
@@ -168,7 +165,7 @@ def _extract_denoise_time_s_from_text(text: str) -> float | None:
         for m2 in rx.finditer(text):
             try:
                 last_fuzzy = float(m2.group(1))
-            except Exception:
+            except ValueError:
                 continue
         if last_fuzzy is not None:
             return last_fuzzy
@@ -181,7 +178,7 @@ def measure_memory_usage(script_path: str):
 
     start_time = time.time()
 
-    p = subprocess.Popen(
+    p = subprocess.Popen(  # noqa: S603 - script_path comes from the hardcoded list at the bottom of this file
         [sys.executable, script_path],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -225,11 +222,9 @@ def measure_memory_usage(script_path: str):
                     chunk = b""
 
                 if chunk:
-                    try:
+                    with contextlib.suppress(OSError, ValueError):
                         sys.stdout.buffer.write(chunk)
                         sys.stdout.buffer.flush()
-                    except Exception:
-                        pass
 
                     decoded = chunk.decode("utf-8", errors="replace")
                     decoded = decoded.replace("\r", "\n")
@@ -241,10 +236,8 @@ def measure_memory_usage(script_path: str):
                         if maybe is not None:
                             denoise_s = maybe
                 else:
-                    try:
+                    with contextlib.suppress(KeyError, ValueError):
                         sel.unregister(key.fd)
-                    except Exception:
-                        pass
                     stdout_fd = None
 
         if ret is not None:
@@ -254,16 +247,14 @@ def measure_memory_usage(script_path: str):
                         chunk = os.read(stdout_fd, 4096)
                         if not chunk:
                             break
-                        try:
+                        with contextlib.suppress(OSError, ValueError):
                             sys.stdout.buffer.write(chunk)
                             sys.stdout.buffer.flush()
-                        except Exception:
-                            pass
                         decoded = chunk.decode("utf-8", errors="replace").replace("\r", "\n")
                         maybe = _extract_denoise_time_s_from_text(decoded)
                         if maybe is not None:
                             denoise_s = maybe
-                except Exception:
+                except (OSError, ValueError):
                     pass
             break
 

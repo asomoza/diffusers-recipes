@@ -3,8 +3,8 @@ import os
 import torch
 from diffusers import GGUFQuantizationConfig, LTX2VideoTransformer3DModel
 from diffusers.pipelines.ltx2 import LTX2ImageToVideoPipeline
-from diffusers.pipelines.ltx2.export_utils import encode_video
 from diffusers.utils import load_image
+from diffusers.utils.export_utils import encode_video
 
 
 model_id = "Lightricks/LTX-2"

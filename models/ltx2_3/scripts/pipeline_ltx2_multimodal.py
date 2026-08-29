@@ -1,6 +1,7 @@
 import copy
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 import av
 import numpy as np
@@ -120,8 +121,7 @@ def load_video(path: str) -> list[PIL.Image.Image]:
     with av.open(path) as container:
         stream = container.streams.video[0]
         stream.thread_type = "AUTO"
-        for frame in container.decode(stream):
-            frames.append(frame.to_image())
+        frames.extend(frame.to_image() for frame in container.decode(stream))
     return frames
 
 
@@ -619,7 +619,7 @@ class LTX2MultiModalPipeline(LTX2ConditionPipeline):
     def _assert_ic_lora_loaded(self) -> None:
         try:
             active = self.get_active_adapters()
-        except Exception:
+        except ValueError:
             active = []
         if not active:
             raise ValueError(
@@ -676,7 +676,7 @@ class LTX2MultiModalPipeline(LTX2ConditionPipeline):
             duration_s = num_frames / frame_rate if (num_frames and frame_rate) else None
             for i, cond in enumerate(audio_conditions):
                 if not isinstance(cond, LTX2AudioCondition):
-                    raise ValueError(f"audio_conditions[{i}] must be an LTX2AudioCondition, got {type(cond)}.")
+                    raise TypeError(f"audio_conditions[{i}] must be an LTX2AudioCondition, got {type(cond)}.")
                 if cond.audio.ndim != 2:
                     raise ValueError(
                         f"audio_conditions[{i}].audio must be 2D (channels, samples); got shape "
@@ -719,7 +719,7 @@ class LTX2MultiModalPipeline(LTX2ConditionPipeline):
                 image_conditions = [image_conditions]
             for i, cond in enumerate(image_conditions):
                 if not isinstance(cond, LTX2ImageCondition):
-                    raise ValueError(f"image_conditions[{i}] must be an LTX2ImageCondition, got {type(cond)}.")
+                    raise TypeError(f"image_conditions[{i}] must be an LTX2ImageCondition, got {type(cond)}.")
                 if not (0.0 <= cond.strength <= 1.0):
                     raise ValueError(f"image_conditions[{i}].strength must be in [0, 1], got {cond.strength}.")
 
@@ -727,7 +727,7 @@ class LTX2MultiModalPipeline(LTX2ConditionPipeline):
     def __call__(
         self,
         video_conditions: LTX2VideoCondition | list[LTX2VideoCondition] | None = None,
-        prompt: str | list[str] = None,
+        prompt: str | list[str] | None = None,
         negative_prompt: str | list[str] | None = None,
         height: int = 512,
         width: int = 768,
@@ -762,7 +762,7 @@ class LTX2MultiModalPipeline(LTX2ConditionPipeline):
         return_dict: bool = True,
         attention_kwargs: dict[str, Any] | None = None,
         callback_on_step_end: Callable[[int, int], None] | None = None,
-        callback_on_step_end_tensor_inputs: list[str] = ["latents"],
+        callback_on_step_end_tensor_inputs: list[str] | None = None,
         max_sequence_length: int = 1024,
         # New parameters
         audio_conditions: LTX2AudioCondition | list[LTX2AudioCondition] | None = None,
@@ -776,6 +776,8 @@ class LTX2MultiModalPipeline(LTX2ConditionPipeline):
         control_audio_strength: float = 1.0,
         identity_guidance_scale: float = 0.0,
     ):
+        if callback_on_step_end_tensor_inputs is None:
+            callback_on_step_end_tensor_inputs = ["latents"]
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
@@ -939,7 +941,7 @@ class LTX2MultiModalPipeline(LTX2ConditionPipeline):
                 latents=audio_latents,
             )
             # Empty mask/clean — no audio conditioning applied.
-            audio_conditioning_mask = torch.zeros(audio_latents.shape[:2] + (1,), device=device, dtype=torch.float32)
+            audio_conditioning_mask = torch.zeros((*audio_latents.shape[:2], 1), device=device, dtype=torch.float32)
             audio_clean_latents = torch.zeros_like(audio_latents)
         else:
             (

@@ -2,7 +2,7 @@ import os
 
 import torch
 from diffusers import LTX2Pipeline, LTX2VideoTransformer3DModel
-from diffusers.pipelines.ltx2.export_utils import encode_video
+from diffusers.utils.export_utils import encode_video
 from sdnq import SDNQConfig  # noqa: F401
 from transformers import Gemma3ForConditionalGeneration
 

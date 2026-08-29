@@ -3,10 +3,10 @@ import os
 
 import torch
 from diffusers import LTX2ImageToVideoPipeline, LTX2LatentUpsamplePipeline, LTX2VideoTransformer3DModel
-from diffusers.pipelines.ltx2.export_utils import encode_video
 from diffusers.pipelines.ltx2.latent_upsampler import LTX2LatentUpsamplerModel
 from diffusers.pipelines.ltx2.utils import DISTILLED_SIGMA_VALUES, STAGE_2_DISTILLED_SIGMA_VALUES
 from diffusers.utils import load_image
+from diffusers.utils.export_utils import encode_video
 from transformers import Gemma3ForConditionalGeneration
 
 
