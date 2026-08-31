@@ -1,12 +1,9 @@
 import os
 
 import torch
-from diffusers import AutoencoderKLMiniMaxH3, ModularPipeline
+from diffusers import ModularPipeline
 from diffusers.utils.export_utils import encode_video
 
-
-# patch until fixed upstream, the fp32 pin covers the whole VAE and ignores dtype
-AutoencoderKLMiniMaxH3._keep_in_fp32_modules = []
 
 device = "cuda"
 dtype = torch.bfloat16
