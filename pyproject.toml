@@ -86,4 +86,4 @@ torch = [
 torchvision = [
   { index = "pytorch-cu130", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
-diffusers = { git = "https://github.com/huggingface/diffusers" }
+diffusers = { git = "https://github.com/huggingface/diffusers", rev = "1d5d056ecff3a8c1d887a7dd1aa66ca4a0323458" }
