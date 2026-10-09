@@ -1,3 +1,7 @@
+# This file is licensed under the GNU General Public License v3.0 (https://www.gnu.org/licenses/gpl-3.0.html),
+# not the Apache-2.0 license of the rest of this repository, because it is derived from ComfyUI
+# (https://github.com/Comfy-Org/ComfyUI), which is GPL-3.0.
+
 """Seam-free, memory-bounded decode and encode for the Qwen-Image-2.1 VAE.
 
 NOTE: this is a workaround for the current version of diffusers (0.41.0.dev0). Its `AutoencoderKLQwenImage21`
