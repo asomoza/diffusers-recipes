@@ -17,7 +17,6 @@ generator = torch.Generator(device="cpu").manual_seed(seed)
 
 pipe = QwenImage21Pipeline.from_pretrained(repo_id, torch_dtype=dtype)
 pipe.enable_model_cpu_offload()
-pipe.vae.enable_tiling()
 
 image = pipe(
     prompt=prompt,

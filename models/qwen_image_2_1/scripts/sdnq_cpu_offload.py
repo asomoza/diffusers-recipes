@@ -26,7 +26,6 @@ if triton_is_available and (torch.cuda.is_available() or torch.xpu.is_available(
     pipe.text_encoder = apply_sdnq_options_to_model(pipe.text_encoder, use_quantized_matmul=True)
 
 pipe.enable_model_cpu_offload()
-pipe.vae.enable_tiling()
 
 image = pipe(
     prompt=prompt,
