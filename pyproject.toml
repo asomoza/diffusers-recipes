@@ -22,7 +22,7 @@ quantization = [
   "bitsandbytes>=0.50.2",
   "torchao>=0.18.0",
   "gguf>=0.19.0",
-  "sdnq>=0.2.5",
+  "sdnq>=0.2.8",
 ]
 attentions = ["kernels>=0.16.1"]
 video = ["av>=18.1.0"]
@@ -31,7 +31,7 @@ all = [
   "bitsandbytes>=0.50.2",
   "torchao>=0.18.0",
   "gguf>=0.19.0",
-  "sdnq>=0.2.5",
+  "sdnq>=0.2.8",
   "kernels>=0.16.1",
   "av>=18.1.0",
 ]
@@ -86,4 +86,4 @@ torch = [
 torchvision = [
   { index = "pytorch-cu130", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
-diffusers = { git = "https://github.com/huggingface/diffusers", rev = "1d5d056ecff3a8c1d887a7dd1aa66ca4a0323458" }
+diffusers = { git = "https://github.com/huggingface/diffusers", rev = "d42ebf9c6e0b46103b74283f5324357a67acaa04" }
