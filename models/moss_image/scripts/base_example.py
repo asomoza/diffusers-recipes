@@ -84,8 +84,8 @@ blocks = ModularPipelineBlocks.from_pretrained(
     trust_components_code=True,
 )
 pipe = blocks.init_pipeline()
-# the VAE runs in float32, like the original
-pipe.load_components(dtype={"default": dtype, "vae": torch.float32})
+# text-to-image only, which skips the vision encoder of the reference workflow; the VAE runs in float32, like the original
+pipe.load_components(workflow="text2image", dtype={"default": dtype, "vae": torch.float32})
 pipe.to(device)
 
 image = pipe(

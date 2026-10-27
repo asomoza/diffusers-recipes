@@ -88,8 +88,8 @@ blocks = ModularPipelineBlocks.from_pretrained(
     trust_components_code=True,
 )
 pipe = blocks.init_pipeline()
-# the VAE runs in float32, like the original
-pipe.load_components(dtype={"default": dtype, "vae": torch.float32})
+# text-to-image only, which skips the vision encoder of the reference workflow; the VAE runs in float32, like the original
+pipe.load_components(workflow="text2image", dtype={"default": dtype, "vae": torch.float32})
 
 if triton_is_available and (torch.cuda.is_available() or torch.xpu.is_available()):
     pipe.transformer = apply_sdnq_options_to_model(pipe.transformer, use_quantized_matmul=True)
